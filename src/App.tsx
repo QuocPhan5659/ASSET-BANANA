@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { 
   auth, 
-  db, 
-  storage,
-  handleFirestoreError, 
-  OperationType 
 } from './firebase';
 import { 
   signInWithPopup, 
@@ -16,24 +12,8 @@ import {
   createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  addDoc, 
-  deleteDoc, 
-  doc, 
-  orderBy, 
   Timestamp,
-  updateDoc 
 } from 'firebase/firestore';
-import { 
-  ref,
-  uploadBytes,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject
-} from 'firebase/storage';
 import { localService } from './services/localService';
 import { 
   Upload, 
@@ -1100,68 +1080,20 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
           });
           storagePath = 'local-storage';
         } else {
-          // Sanitize filename
-          const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-          storagePath = `assets/${user.uid}/${Date.now()}_${sanitizedName}`;
-          const storageRef = ref(storage, storagePath);
+          // Local API Upload
+          const formData = new FormData();
+          formData.append('file', fileToUpload);
 
-          // 2. Upload step (10-90%)
-          try {
-            console.log(`Uploading to storage: ${storagePath}`);
-            const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
-            
-            // Add a safety timeout for the upload task
-            const uploadPromise = new Promise<void>((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                uploadTask.cancel();
-                reject(new Error("Upload timed out after 30 seconds"));
-              }, 30000);
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          });
 
-              uploadTask.on('state_changed', 
-                (snapshot) => {
-                  const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                  // Map 0-100% of upload to 10-90% of total progress
-                  const totalProgress = 10 + (percent * 0.8);
-                  setUploadingFiles(prev => prev.map(f => 
-                    f.id === uploadId ? { ...f, progress: Math.round(totalProgress) } : f
-                  ));
-                }, 
-                (error) => {
-                  clearTimeout(timeout);
-                  reject(error);
-                }, 
-                () => {
-                  clearTimeout(timeout);
-                  resolve();
-                }
-              );
-            });
-
-            await uploadPromise;
-            contentUrl = await getDownloadURL(storageRef);
-            console.log(`Upload successful: ${contentUrl}`);
-            
-          } catch (storageError: any) {
-            console.warn("Storage upload failed or timed out, trying fallback:", storageError);
-            
-            // Fallback: If file is small (< 1MB), store as Base64 in Firestore
-            if (fileToUpload.size < 1024 * 1024) {
-              setUploadingFiles(prev => prev.map(f => 
-                f.id === uploadId ? { ...f, progress: 50, status: 'uploading' } : f
-              ));
-              
-              contentUrl = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = () => reject(new Error("Failed to read file for fallback"));
-                reader.readAsDataURL(fileToUpload);
-              });
-              storagePath = 'firestore-embedded';
-              console.log("Using Firestore fallback for small file");
-            } else {
-              throw storageError;
-            }
-          }
+          if (!response.ok) throw new Error('Upload failed');
+          
+          const uploadResult = await response.json();
+          contentUrl = uploadResult.url;
+          storagePath = `uploads/${uploadResult.filename}`;
         }
 
         // 3. Metadata step (90-100%)
@@ -1171,6 +1103,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
 
         const isTextFile = file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.csv');
         const assetData = {
+          id: Math.random().toString(36).substring(7),
           name: file.name,
           type: file.type.startsWith('image/') ? 'image' : (isTextFile ? 'text' : 'file') as any,
           content: contentUrl,
@@ -1179,14 +1112,21 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
           mimeType: file.type || 'application/octet-stream',
           ownerId: user.uid,
           folderId: selectedFolderId || null,
-          createdAt: Timestamp.now()
         };
 
         if (isDemo) {
           localService.addAsset(assetData as any);
           setAssets(localService.getAssets());
         } else {
-          await addDoc(collection(db, 'assets'), assetData);
+          await fetch('/api/assets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(assetData)
+          });
+          // Refresh
+          const res = await fetch('/api/assets');
+          const data = await res.json();
+          setAssets(data);
         }
 
         setUploadingFiles(prev => prev.map(f => 
@@ -1214,21 +1154,22 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
       return;
     }
 
-    const q = query(
-      collection(db, 'folders')
-    );
+    if (!user?.uid) return;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newFolders = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Folder[];
-      setFolders(newFolders);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'folders');
-    });
+    const fetchFolders = async () => {
+      try {
+        const res = await fetch('/api/folders');
+        const data = await res.json();
+        setFolders(data);
+      } catch (error) {
+        console.error("Error fetching folders:", error);
+      }
+    };
 
-    return () => unsubscribe();
+    fetchFolders();
+    // Refresh every 5 seconds for "real-time" feel without Firebase
+    const interval = setInterval(fetchFolders, 5000);
+    return () => clearInterval(interval);
   }, [user?.uid, isDemo]);
 
   // Fetch Assets
@@ -1239,23 +1180,23 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
       return;
     }
 
-    // Fetch all assets so everyone can see them
-    const q = query(
-      collection(db, 'assets')
-    );
+    if (!user?.uid) return;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newAssets = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Asset[];
-      setAssets(newAssets);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'assets');
-    });
+    const fetchAssets = async () => {
+      try {
+        const res = await fetch('/api/assets');
+        const data = await res.json();
+        setAssets(data);
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching assets:", error);
+        setLoading(false);
+      }
+    };
 
-    return () => unsubscribe();
+    fetchAssets();
+    const interval = setInterval(fetchAssets, 5000);
+    return () => clearInterval(interval);
   }, [user?.uid, isDemo]);
 
   useEffect(() => {
@@ -1275,20 +1216,28 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
   const handleCreateFolder = async (name: string) => {
     try {
       const folderData = {
+        id: Math.random().toString(36).substring(7),
         name,
         ownerId: user.uid,
         parentId: selectedFolderId || null,
-        createdAt: Timestamp.now()
       };
 
       if (isDemo) {
         localService.addFolder(folderData as any);
         setFolders(localService.getFolders());
       } else {
-        await addDoc(collection(db, 'folders'), folderData);
+        await fetch('/api/folders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(folderData)
+        });
+        // Trigger immediate refresh
+        const res = await fetch('/api/folders');
+        const data = await res.json();
+        setFolders(data);
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'folders');
+      console.error("Error creating folder:", error);
     }
   };
 
@@ -1313,13 +1262,11 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
           localService.deleteAsset(asset.id);
           setAssets(localService.getAssets());
         } else {
-          // 1. Delete from Storage if exists
-          if (asset.storagePath && asset.storagePath !== 'firestore-embedded') {
-            const storageRef = ref(storage, asset.storagePath);
-            await deleteObject(storageRef);
-          }
-          // 2. Delete from Firestore
-          await deleteDoc(doc(db, 'assets', asset.id));
+          await fetch(`/api/assets/${asset.id}`, { method: 'DELETE' });
+          // Refresh
+          const res = await fetch('/api/assets');
+          const data = await res.json();
+          setAssets(data);
         }
       } else if (deleteItem.type === 'folder') {
         const id = deleteItem.id;
@@ -1328,12 +1275,19 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
           setFolders(localService.getFolders());
           setAssets(localService.getAssets());
         } else {
-          await deleteDoc(doc(db, 'folders', id));
+          await fetch(`/api/folders/${id}`, { method: 'DELETE' });
+          // Refresh
+          const resF = await fetch('/api/folders');
+          const dataF = await resF.json();
+          setFolders(dataF);
+          const resA = await fetch('/api/assets');
+          const dataA = await resA.json();
+          setAssets(dataA);
         }
         if (selectedFolderId === id) setSelectedFolderId(null);
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `${deleteItem.type}s/${deleteItem.id}`);
+      console.error("Error deleting:", error);
     }
   };
 
@@ -1350,13 +1304,25 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
           setFolders(localService.getFolders());
         }
       } else {
-        const collectionName = renameItem.type === 'asset' ? 'assets' : 'folders';
-        await updateDoc(doc(db, collectionName, renameItem.id), {
-          name: newName
+        const endpoint = renameItem.type === 'asset' ? 'assets' : 'folders';
+        await fetch(`/api/${endpoint}/${renameItem.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName })
         });
+        // Refresh
+        if (renameItem.type === 'asset') {
+          const res = await fetch('/api/assets');
+          const data = await res.json();
+          setAssets(data);
+        } else {
+          const res = await fetch('/api/folders');
+          const data = await res.json();
+          setFolders(data);
+        }
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `${renameItem.type}s/${renameItem.id}`);
+      console.error("Error renaming:", error);
     }
   };
 
@@ -1509,7 +1475,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
                 <div className="h-full bg-zinc-900 w-1/5" />
               </div>
               <p className="text-[9px] text-zinc-500 mt-1.5 font-medium truncate">
-                {storage.app.options.storageBucket || 'Not configured'}
+                Local Server Storage
               </p>
             </div>
           </div>
