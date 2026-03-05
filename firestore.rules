@@ -47,14 +47,14 @@ service cloud.firestore {
     }
 
     match /folders/{folderId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow create: if isAdmin() && isValidFolder(request.resource.data);
       allow update: if isAdmin() && isValidFolder(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /assets/{assetId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow create: if isAdmin() && isValidAsset(request.resource.data);
       allow update: if isAdmin() && isValidAsset(request.resource.data);
       allow delete: if isAdmin();

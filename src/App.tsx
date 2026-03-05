@@ -423,16 +423,16 @@ const AssetCard = ({
         className="group flex items-center justify-between p-3 bg-white hover:bg-zinc-50 border-b border-zinc-100 transition-colors cursor-grab active:cursor-grabbing select-none"
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-4 h-4 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="w-6 h-6 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
             {asset.type === 'image' ? (
               <img src={asset.content} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" draggable="false" />
             ) : (
-              <FileIcon size={6} className="text-zinc-400" />
+              <FileIcon size={10} className="text-zinc-400" />
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-[7px] font-medium text-zinc-900 truncate">{asset.name}</h3>
-            <p className="text-[5px] text-zinc-500 uppercase tracking-wider">
+            <h3 className="text-[10px] font-medium text-zinc-900 truncate">{asset.name}</h3>
+            <p className="text-[8px] text-zinc-500 uppercase tracking-wider">
               {format(safeToDate(asset.createdAt), 'MMM d')} • {(asset.size / 1024).toFixed(0)} KB
             </p>
           </div>
@@ -443,18 +443,18 @@ const AssetCard = ({
             <button 
               onClick={handleCopyContent} 
               className={cn(
-                "p-0.5 rounded-lg transition-colors",
+                "p-1 rounded-lg transition-colors",
                 isCopying ? "bg-emerald-100 text-emerald-600" : "hover:bg-zinc-200 text-zinc-600"
               )}
               title="Copy content"
             >
-              {isCopying ? <Check size={6} /> : <Copy size={6} />}
+              {isCopying ? <Check size={10} /> : <Copy size={10} />}
             </button>
           )}
           {isAdmin && (
             <>
-              <button onClick={(e) => { e.stopPropagation(); onRename(asset); }} className="p-0.5 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"><Edit2 size={6} /></button>
-              <button onClick={(e) => { e.stopPropagation(); onDelete(asset); }} className="p-0.5 hover:bg-red-100 rounded-lg text-red-600 transition-colors"><Trash2 size={6} /></button>
+              <button onClick={(e) => { e.stopPropagation(); onRename(asset); }} className="p-1 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"><Edit2 size={10} /></button>
+              <button onClick={(e) => { e.stopPropagation(); onDelete(asset); }} className="p-1 hover:bg-red-100 rounded-lg text-red-600 transition-colors"><Trash2 size={10} /></button>
             </>
           )}
         </div>
@@ -485,13 +485,13 @@ const AssetCard = ({
           />
         ) : asset.type === 'text' ? (
           <div className="flex flex-col items-center gap-1">
-            <FileText size={12} className="text-zinc-300" />
-            <span className="text-[5px] font-mono text-zinc-400 uppercase tracking-widest">Text</span>
+            <FileText size={16} className="text-zinc-300" />
+            <span className="text-[7px] font-mono text-zinc-400 uppercase tracking-widest">Text</span>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-1">
-            <FileIcon size={12} className="text-zinc-300" />
-            <span className="text-[5px] font-mono text-zinc-400 uppercase tracking-widest">File</span>
+            <FileIcon size={16} className="text-zinc-300" />
+            <span className="text-[7px] font-mono text-zinc-400 uppercase tracking-widest">File</span>
           </div>
         )}
         
@@ -500,37 +500,37 @@ const AssetCard = ({
             <button 
               onClick={handleCopyContent} 
               className={cn(
-                "p-0.5 rounded-md shadow-sm backdrop-blur-md transition-colors",
+                "p-1 rounded-md shadow-sm backdrop-blur-md transition-colors",
                 isCopying ? "bg-emerald-500 text-white" : "bg-white/80 hover:bg-white text-zinc-600"
               )}
             >
-              {isCopying ? <Check size={6} /> : <Copy size={6} />}
+              {isCopying ? <Check size={10} /> : <Copy size={10} />}
             </button>
           )}
           {isAdmin && (
             <>
               <button 
                 onClick={(e) => { e.stopPropagation(); onRename(asset); }}
-                className="p-0.5 bg-white/80 hover:bg-white text-zinc-600 rounded-md shadow-sm backdrop-blur-md transition-colors"
+                className="p-1 bg-white/80 hover:bg-white text-zinc-600 rounded-md shadow-sm backdrop-blur-md transition-colors"
               >
-                <Edit2 size={6} />
+                <Edit2 size={10} />
               </button>
               <button 
                 onClick={(e) => { e.stopPropagation(); onDelete(asset); }}
-                className="p-0.5 bg-white/80 hover:bg-red-50 text-red-600 rounded-md shadow-sm backdrop-blur-md transition-colors"
+                className="p-1 bg-white/80 hover:bg-red-50 text-red-600 rounded-md shadow-sm backdrop-blur-md transition-colors"
               >
-                <Trash2 size={6} />
+                <Trash2 size={10} />
               </button>
             </>
           )}
         </div>
       </div>
       
-      <div className="p-1 flex-1 flex flex-col">
+      <div className="p-1.5 flex-1 flex flex-col">
         <div className="flex items-center gap-1 mb-0.5">
-          <h3 className="text-[7px] font-medium text-zinc-900 truncate leading-tight flex-1">{asset.name}</h3>
+          <h3 className="text-[9px] font-medium text-zinc-900 truncate leading-tight flex-1">{asset.name}</h3>
         </div>
-        <p className="text-[5px] text-zinc-500 uppercase tracking-wider">
+        <p className="text-[7px] text-zinc-500 uppercase tracking-wider">
           {format(safeToDate(asset.createdAt), 'MMM d')} • {(asset.size / 1024).toFixed(0)} KB
         </p>
       </div>
@@ -901,30 +901,30 @@ const FolderItem = ({
           setIsOpen(!isOpen);
         }}
         className={cn(
-          "group flex items-center justify-between px-2 py-1 rounded-lg text-[8px] font-medium transition-all cursor-pointer",
+          "group flex items-center justify-between px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer",
           isSelected ? "bg-zinc-900 text-white shadow-md" : "text-zinc-600 hover:bg-zinc-100"
         )}
         style={{ paddingLeft: `${level * 10 + 12}px` }}
       >
         <div className="flex items-center gap-1.5 overflow-hidden">
           {subFolders.length > 0 ? (
-            isOpen ? <ChevronDown size={8} className="flex-shrink-0" /> : <ChevronRight size={8} className="flex-shrink-0" />
+            isOpen ? <ChevronDown size={10} className="flex-shrink-0" /> : <ChevronRight size={10} className="flex-shrink-0" />
           ) : (
-            <div className="w-[8px]" />
+            <div className="w-[10px]" />
           )}
-          <FolderIcon size={10} className={isSelected ? "text-white" : "text-zinc-400"} />
+          <FolderIcon size={12} className={isSelected ? "text-white" : "text-zinc-400"} />
           <span className="truncate">{folder.name}</span>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           {isAdmin && (
             <>
               <Edit2 
-                size={8} 
+                size={10} 
                 className="hover:text-zinc-900 transition-colors" 
                 onClick={(e) => onRename(e, folder)}
               />
               <Trash2 
-                size={8} 
+                size={10} 
                 className="hover:text-red-500 transition-colors" 
                 onClick={(e) => onDelete(e, folder.id)}
               />
@@ -1146,8 +1146,6 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
       return;
     }
 
-    if (!user) return;
-
     const q = query(
       collection(db, 'folders')
     );
@@ -1163,7 +1161,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
     });
 
     return () => unsubscribe();
-  }, [user.uid, isDemo]);
+  }, [user?.uid, isDemo]);
 
   // Fetch Assets
   useEffect(() => {
@@ -1172,8 +1170,6 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
       setLoading(false);
       return;
     }
-
-    if (!user) return;
 
     // Fetch all assets so everyone can see them
     const q = query(
@@ -1192,7 +1188,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
     });
 
     return () => unsubscribe();
-  }, [user.uid, isDemo]);
+  }, [user?.uid, isDemo]);
 
   const handleCreateFolder = async (name: string) => {
     try {
@@ -1304,12 +1300,12 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
             >
               <Upload className="text-white w-2 h-2" />
             </div>
-            <h1 className="text-[10px] font-semibold tracking-tight hidden sm:block">AssetHub</h1>
+            <h1 className="text-[12px] font-semibold tracking-tight hidden sm:block">AssetHub</h1>
           </div>
 
           <div className="flex items-center gap-2">
             <div className={cn(
-              "px-1.5 py-0.5 rounded-full text-[7px] font-bold border uppercase tracking-widest flex items-center gap-1",
+              "px-1.5 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-widest flex items-center gap-1",
               isAdmin ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"
             )}>
               {isAdmin ? "Admin" : "Public"}
@@ -1317,43 +1313,53 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
           </div>
 
           <div className="flex-1 max-w-[100px] relative">
-            <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 text-zinc-400" size={7} />
+            <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 text-zinc-400" size={10} />
             <input 
               type="text" 
               placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-5 pr-1.5 py-0.5 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-lg text-[8px] transition-all outline-none"
+              className="w-full pl-6 pr-1.5 py-0.5 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-lg text-[10px] transition-all outline-none"
             />
           </div>
 
           <div className="flex items-center gap-1.5">
-            <button 
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.multiple = true;
-                input.onchange = (e) => {
-                  const files = Array.from((e.target as HTMLInputElement).files || []);
-                  if (files.length > 0) handleUpload(files);
-                };
-                input.click();
-              }}
-              className="hidden md:flex items-center gap-1 px-1.5 py-0.5 bg-zinc-900 text-white rounded-lg text-[8px] font-medium hover:bg-zinc-800 transition-all shadow-sm"
-            >
-              <Plus size={8} />
-              Upload
-            </button>
-            <button onClick={() => isDemo ? window.location.reload() : signOut(auth)} className="p-0.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><LogOut size={8} /></button>
+            {isAdmin && (
+              <button 
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.multiple = true;
+                  input.onchange = (e) => {
+                    const files = Array.from((e.target as HTMLInputElement).files || []);
+                    if (files.length > 0) handleUpload(files);
+                  };
+                  input.click();
+                }}
+                className="hidden md:flex items-center gap-1 px-1.5 py-0.5 bg-zinc-900 text-white rounded-lg text-[10px] font-medium hover:bg-zinc-800 transition-all shadow-sm"
+              >
+                <Plus size={10} />
+                Upload
+              </button>
+            )}
+            {user.uid !== 'public_user' ? (
+              <button onClick={() => isDemo ? window.location.reload() : signOut(auth)} className="p-0.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Logout">
+                <LogOut size={12} />
+              </button>
+            ) : (
+              <button onClick={onLoginClick} className="p-0.5 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-all" title="Login">
+                <UserIcon size={12} />
+              </button>
+            )}
             <div className="flex items-center gap-1 pl-1 border-l border-zinc-200">
               <div className="hidden lg:block text-right">
-                <p className="text-[7px] font-bold text-zinc-900 truncate max-w-[60px]">{user.displayName || (isAdmin ? 'Admin' : 'Guest')}</p>
-                <p className="text-[5px] text-zinc-400 truncate max-w-[60px]">{isAdmin ? user.email : 'Read-only'}</p>
+                <p className="text-[9px] font-bold text-zinc-900 truncate max-w-[60px]">{user.displayName || (isAdmin ? 'Admin' : 'Guest')}</p>
+                <p className="text-[7px] text-zinc-400 truncate max-w-[60px]">{isAdmin ? user.email : 'Read-only'}</p>
               </div>
               <img 
                 src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email || 'U'}&background=18181b&color=fff`} 
                 alt={user.displayName || 'User'} 
-                className="w-4 h-4 rounded-full border border-zinc-200 object-cover" 
+                className="w-6 h-6 rounded-full border border-zinc-200 object-cover" 
               />
             </div>
           </div>
@@ -1365,25 +1371,27 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
         {/* Left Column - Folders */}
         <aside className="w-36 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0">
           <div className="p-1.5 flex items-center justify-between">
-            <h2 className="text-[6px] font-bold uppercase tracking-widest text-zinc-400">Folders</h2>
-            <button 
-              onClick={() => setIsFolderModalOpen(true)}
-              className="p-0.5 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
-              title="New Folder"
-            >
-              <FolderPlus size={8} />
-            </button>
+            <h2 className="text-[8px] font-bold uppercase tracking-widest text-zinc-400">Folders</h2>
+            {isAdmin && (
+              <button 
+                onClick={() => setIsFolderModalOpen(true)}
+                className="p-0.5 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
+                title="New Folder"
+              >
+                <FolderPlus size={12} />
+              </button>
+            )}
           </div>
           
           <nav className="flex-1 overflow-y-auto px-3 pb-6 space-y-1">
             <button 
               onClick={() => setSelectedFolderId(null)}
               className={cn(
-                "w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-[8px] font-medium transition-all",
+                "w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all",
                 !selectedFolderId ? "bg-zinc-900 text-white shadow-md" : "text-zinc-600 hover:bg-zinc-100"
               )}
             >
-              <Grid size={10} />
+              <Grid size={14} />
               Root Assets
             </button>
             
@@ -1427,13 +1435,13 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
               <div className="flex items-center gap-2 text-zinc-400 mb-0.5">
                 {selectedFolderId && (
                   <button onClick={() => setSelectedFolderId(null)} className="hover:text-zinc-900 transition-colors">
-                    <ArrowLeft size={8} />
+                    <ArrowLeft size={10} />
                   </button>
                 )}
-                <span className="text-[6px] font-bold uppercase tracking-widest">Library</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest">Library</span>
               </div>
-              <h2 className="text-sm font-semibold tracking-tight text-zinc-900 mb-0">{selectedFolderName}</h2>
-              <p className="text-[7px] text-zinc-500 font-medium">
+              <h2 className="text-base font-semibold tracking-tight text-zinc-900 mb-0">{selectedFolderName}</h2>
+              <p className="text-[9px] text-zinc-500 font-medium">
                 {filteredAssets.length} {filteredAssets.length === 1 ? 'asset' : 'assets'} in this view
               </p>
             </div>
@@ -1444,20 +1452,20 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
                 <button 
                   onClick={() => setViewMode('grid')}
                   className={cn(
-                    "p-0.5 rounded-lg transition-all",
+                    "p-1 rounded-lg transition-all",
                     viewMode === 'grid' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
                   )}
                 >
-                  <Grid size={10} />
+                  <Grid size={14} />
                 </button>
                 <button 
                   onClick={() => setViewMode('list')}
                   className={cn(
-                    "p-0.5 rounded-lg transition-all",
+                    "p-1 rounded-lg transition-all",
                     viewMode === 'list' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
                   )}
                 >
-                  <ListIcon size={10} />
+                  <ListIcon size={14} />
                 </button>
               </div>
 
@@ -1476,10 +1484,10 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
                     className="w-16 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
                   />
                   <button onClick={() => setGridSize(Math.min(5, gridSize + 1))} className="text-zinc-400 hover:text-zinc-600">
-                    <Search size={10} />
+                    <Search size={14} />
                   </button>
-                  <span className="text-[7px] font-bold text-zinc-400 uppercase tracking-widest w-8">
-                    {gridSize === 1 ? 'Tiny' : gridSize === 2 ? 'Small' : gridSize === 3 ? 'Med' : gridSize === 4 ? 'Lrg' : 'Huge'}
+                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest w-10">
+                    {gridSize === 1 ? 'Tiny' : gridSize === 2 ? 'Small' : gridSize === 3 ? 'Medium' : gridSize === 4 ? 'Large' : 'Huge'}
                   </span>
                 </div>
               )}
@@ -1490,16 +1498,16 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
                 <>
                   <button 
                     onClick={() => setIsFolderModalOpen(true)}
-                    className="flex items-center justify-center gap-1 px-1.5 py-1 bg-white border border-zinc-200 text-zinc-900 rounded-lg text-[8px] font-medium hover:bg-zinc-50 transition-all"
+                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-white border border-zinc-200 text-zinc-900 rounded-lg text-[10px] font-medium hover:bg-zinc-50 transition-all"
                   >
-                    <FolderPlus size={8} />
+                    <FolderPlus size={12} />
                     Subfolder
                   </button>
                   <button 
                     onClick={() => setIsUploadModalOpen(true)}
-                    className="flex items-center justify-center gap-1 px-2 py-1 bg-zinc-900 text-white rounded-lg text-[8px] font-medium hover:bg-zinc-800 transition-all shadow-sm hover:shadow-md"
+                    className="flex items-center justify-center gap-1 px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-[10px] font-medium hover:bg-zinc-800 transition-all shadow-sm hover:shadow-md"
                   >
-                    <Plus size={8} />
+                    <Plus size={12} />
                     Upload
                   </button>
                 </>
@@ -1629,7 +1637,7 @@ export default function App() {
     displayName: 'Public Guest' 
   });
   const [loading, setLoading] = useState(false);
-  const [isDemo, setIsDemo] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
