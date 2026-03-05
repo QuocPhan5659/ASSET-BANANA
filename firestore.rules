@@ -26,14 +26,15 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == "arc.quocphan9999@gmail.com";
+      return isAuthenticated() && 
+        (request.auth.token.email == "arc.quocphan9999@gmail.com" || 
+         request.auth.token.email == "vi.quocphan.tk@gmail.com");
     }
 
     function isValidAsset(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() < 255 &&
              data.type in ['image', 'text'] &&
              data.content is string &&
-             data.ownerId == request.auth.uid &&
              data.createdAt is timestamp &&
              (!('folderId' in data) || data.folderId is string || data.folderId == null) &&
              (!('storagePath' in data) || data.storagePath is string);
@@ -41,7 +42,6 @@ service cloud.firestore {
 
     function isValidFolder(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.ownerId == request.auth.uid &&
              data.createdAt is timestamp &&
              (!('parentId' in data) || data.parentId is string || data.parentId == null);
     }
@@ -49,14 +49,14 @@ service cloud.firestore {
     match /folders/{folderId} {
       allow read: if true;
       allow create: if isAdmin() && isValidFolder(request.resource.data);
-      allow update: if isAdmin() && isValidFolder(request.resource.data);
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /assets/{assetId} {
       allow read: if true;
       allow create: if isAdmin() && isValidAsset(request.resource.data);
-      allow update: if isAdmin() && isValidAsset(request.resource.data);
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
