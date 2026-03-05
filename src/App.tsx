@@ -85,7 +85,7 @@ const safeToDate = (date: any): Date => {
   return new Date();
 };
 
-const ADMIN_EMAIL = 'arc.quocphan9999@gmail.com';
+const ADMIN_EMAILS = ['arc.quocphan9999@gmail.com', 'vi.quocphan.tk@gmail.com'];
 
 // --- Types ---
 interface Folder {
@@ -361,20 +361,13 @@ const AssetCard = ({
     const isBase64 = url.startsWith('data:');
     
     try {
-      // NEVER set full base64 in DownloadURL or uri-list, it's the main cause of freezes
+      // NEVER set full base64 in uri-list, it's the main cause of freezes
       if (!isBase64) { 
         e.dataTransfer.setData('text/plain', url);
         e.dataTransfer.setData('text/uri-list', url);
-        
-        if (asset.type === 'image') {
-          const downloadUrl = `${asset.mimeType || 'image/png'}:${asset.name}:${url}`;
-          e.dataTransfer.setData('DownloadURL', downloadUrl);
-        }
       } else {
-        // For base64, only set the name and a custom type to prevent browser freeze
+        // For base64, only set the name to prevent browser freeze
         e.dataTransfer.setData('text/plain', asset.name);
-        e.dataTransfer.setData('application/x-asset-id', asset.id);
-        // We can't safely drag-out base64 images without freezing the UI in many browsers
       }
     } catch (err) {
       console.warn('Drag data transfer failed');
@@ -412,7 +405,6 @@ const AssetCard = ({
   if (viewMode === 'list') {
     return (
       <motion.div 
-        layout
         draggable="true"
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
@@ -438,7 +430,7 @@ const AssetCard = ({
           </div>
         </div>
         
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1">
           {isText && (
             <button 
               onClick={handleCopyContent} 
@@ -453,8 +445,20 @@ const AssetCard = ({
           )}
           {isAdmin && (
             <>
-              <button onClick={(e) => { e.stopPropagation(); onRename(asset); }} className="p-1 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"><Edit2 size={10} /></button>
-              <button onClick={(e) => { e.stopPropagation(); onDelete(asset); }} className="p-1 hover:bg-red-100 rounded-lg text-red-600 transition-colors"><Trash2 size={10} /></button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onRename(asset); }} 
+                className="p-1 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"
+                title="Rename"
+              >
+                <Edit2 size={10} />
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onDelete(asset); }} 
+                className="p-1 hover:bg-red-100 rounded-lg text-red-600 transition-colors"
+                title="Delete"
+              >
+                <Trash2 size={10} />
+              </button>
             </>
           )}
         </div>
@@ -464,7 +468,6 @@ const AssetCard = ({
 
   return (
     <motion.div 
-      layout
       draggable="true"
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -474,7 +477,7 @@ const AssetCard = ({
       exit={{ opacity: 0, scale: 0.95 }}
       className="group relative bg-white rounded-xl border border-zinc-200 overflow-hidden hover:shadow-md transition-all h-full flex flex-col cursor-grab active:cursor-grabbing select-none"
     >
-      <div className="aspect-[2/3] bg-zinc-50 flex items-center justify-center relative overflow-hidden">
+      <div className="aspect-square bg-zinc-50 flex items-center justify-center relative overflow-hidden">
         {asset.type === 'image' ? (
           <img 
             src={asset.content} 
@@ -495,7 +498,7 @@ const AssetCard = ({
           </div>
         )}
         
-        <div className="absolute top-1 right-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-1 right-1 flex flex-col gap-0.5">
           {isText && (
             <button 
               onClick={handleCopyContent} 
@@ -503,25 +506,10 @@ const AssetCard = ({
                 "p-1 rounded-md shadow-sm backdrop-blur-md transition-colors",
                 isCopying ? "bg-emerald-500 text-white" : "bg-white/80 hover:bg-white text-zinc-600"
               )}
+              title="Copy content"
             >
               {isCopying ? <Check size={10} /> : <Copy size={10} />}
             </button>
-          )}
-          {isAdmin && (
-            <>
-              <button 
-                onClick={(e) => { e.stopPropagation(); onRename(asset); }}
-                className="p-1 bg-white/80 hover:bg-white text-zinc-600 rounded-md shadow-sm backdrop-blur-md transition-colors"
-              >
-                <Edit2 size={10} />
-              </button>
-              <button 
-                onClick={(e) => { e.stopPropagation(); onDelete(asset); }}
-                className="p-1 bg-white/80 hover:bg-red-50 text-red-600 rounded-md shadow-sm backdrop-blur-md transition-colors"
-              >
-                <Trash2 size={10} />
-              </button>
-            </>
           )}
         </div>
       </div>
@@ -529,6 +517,24 @@ const AssetCard = ({
       <div className="p-1.5 flex-1 flex flex-col">
         <div className="flex items-center gap-1 mb-0.5">
           <h3 className="text-[9px] font-medium text-zinc-900 truncate leading-tight flex-1">{asset.name}</h3>
+          {isAdmin && (
+            <div className="flex items-center gap-0.5">
+              <button 
+                onClick={(e) => { e.stopPropagation(); onRename(asset); }}
+                className="p-0.5 hover:bg-zinc-100 text-zinc-400 hover:text-zinc-900 rounded transition-colors"
+                title="Rename"
+              >
+                <Edit2 size={8} />
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onDelete(asset); }}
+                className="p-0.5 hover:bg-red-50 text-zinc-400 hover:text-red-600 rounded transition-colors"
+                title="Delete"
+              >
+                <Trash2 size={8} />
+              </button>
+            </div>
+          )}
         </div>
         <p className="text-[7px] text-zinc-500 uppercase tracking-wider">
           {format(safeToDate(asset.createdAt), 'MMM d')} • {(asset.size / 1024).toFixed(0)} KB
@@ -584,6 +590,44 @@ const RenameModal = ({ isOpen, onClose, onRename, initialName, title }: { isOpen
                 </button>
               </div>
             </form>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+const DeleteModal = ({ isOpen, onClose, onDelete, title, message }: { isOpen: boolean; onClose: () => void; onDelete: () => Promise<void>; title: string; message: string }) => {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDelete();
+      onClose();
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6">
+            <h2 className="text-lg font-semibold text-zinc-900 mb-2">{title}</h2>
+            <p className="text-xs text-zinc-500 mb-6">{message}</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-zinc-600 text-xs font-medium hover:bg-zinc-100 rounded-lg transition-colors">Cancel</button>
+              <button 
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </motion.div>
         </div>
       )}
@@ -776,7 +820,7 @@ const UploadModal = ({
   );
 };
 
-const PreviewModal = ({ asset, onClose }: { asset: Asset | null; onClose: () => void }) => {
+const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: Asset | null; onClose: () => void; onRename: (a: Asset) => void; onDelete: (a: Asset) => void; isAdmin: boolean }) => {
   const [textContent, setTextContent] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(false);
 
@@ -828,6 +872,24 @@ const PreviewModal = ({ asset, onClose }: { asset: Asset | null; onClose: () => 
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {isAdmin && (
+                <>
+                  <button 
+                    onClick={() => { onRename(asset); onClose(); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-zinc-100 rounded-xl transition-colors text-zinc-600 text-xs font-medium"
+                  >
+                    <Edit2 size={14} />
+                    Rename
+                  </button>
+                  <button 
+                    onClick={() => { onDelete(asset); onClose(); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-red-50 rounded-xl transition-colors text-red-600 text-xs font-medium"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
+                </>
+              )}
               <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600">
                 <X size={16} />
               </button>
@@ -913,21 +975,25 @@ const FolderItem = ({
             <div className="w-[10px]" />
           )}
           <FolderIcon size={12} className={isSelected ? "text-white" : "text-zinc-400"} />
-          <span className="truncate">{folder.name}</span>
+          <span className="whitespace-nowrap">{folder.name}</span>
         </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <div className="flex items-center gap-1 flex-shrink-0">
           {isAdmin && (
             <>
-              <Edit2 
-                size={10} 
-                className="hover:text-zinc-900 transition-colors" 
+              <button 
                 onClick={(e) => onRename(e, folder)}
-              />
-              <Trash2 
-                size={10} 
-                className="hover:text-red-500 transition-colors" 
+                className="p-1 hover:bg-zinc-200 rounded text-zinc-400 hover:text-zinc-900 transition-colors"
+                title="Rename"
+              >
+                <Edit2 size={10} />
+              </button>
+              <button 
                 onClick={(e) => onDelete(e, folder.id)}
-              />
+                className="p-1 hover:bg-red-50 rounded text-zinc-400 hover:text-red-500 transition-colors"
+                title="Delete"
+              >
+                <Trash2 size={10} />
+              </button>
             </>
           )}
         </div>
@@ -974,10 +1040,11 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
   const [renameItem, setRenameItem] = useState<{ id: string; name: string; type: 'asset' | 'folder' } | null>(null);
+  const [deleteItem, setDeleteItem] = useState<{ id: string; name: string; type: 'asset' | 'folder'; asset?: Asset } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [gridSize, setGridSize] = useState(2); // 1 to 5, default 2 (Small)
+  const [gridSize, setGridSize] = useState(4); // 1 to 5, default 4 (Large/3 columns)
 
   const handleUpload = async (files: File[]) => {
     const newUploadingFiles = files.map(file => ({
@@ -1000,7 +1067,8 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
         let fileToUpload = file;
 
         // 1. Compression step (0-10%)
-        if (file.type.startsWith('image/') && file.size > 200 * 1024) {
+        // Skip compression for PNG files to preserve metadata (PNG info)
+        if (file.type.startsWith('image/') && file.type !== 'image/png' && file.size > 200 * 1024) {
           setUploadingFiles(prev => prev.map(f => 
             f.id === uploadId ? { ...f, progress: 5 } : f
           ));
@@ -1190,6 +1258,20 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
     return () => unsubscribe();
   }, [user?.uid, isDemo]);
 
+  useEffect(() => {
+    const preventDefault = (e: DragEvent) => {
+      if (e.dataTransfer) {
+        // Only prevent if it's not our own drag
+      }
+    };
+    window.addEventListener('dragover', preventDefault);
+    window.addEventListener('drop', preventDefault);
+    return () => {
+      window.removeEventListener('dragover', preventDefault);
+      window.removeEventListener('drop', preventDefault);
+    };
+  }, []);
+
   const handleCreateFolder = async (name: string) => {
     try {
       const folderData = {
@@ -1211,8 +1293,22 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
   };
 
   const handleDelete = async (asset: Asset) => {
-    if (confirm('Are you sure you want to delete this asset?')) {
-      try {
+    setDeleteItem({ id: asset.id, name: asset.name, type: 'asset', asset });
+  };
+
+  const handleDeleteFolder = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const folder = folders.find(f => f.id === id);
+    if (folder) {
+      setDeleteItem({ id, name: folder.name, type: 'folder' });
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!deleteItem) return;
+    try {
+      if (deleteItem.type === 'asset' && deleteItem.asset) {
+        const asset = deleteItem.asset;
         if (isDemo) {
           localService.deleteAsset(asset.id);
           setAssets(localService.getAssets());
@@ -1225,16 +1321,8 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
           // 2. Delete from Firestore
           await deleteDoc(doc(db, 'assets', asset.id));
         }
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `assets/${asset.id}`);
-      }
-    }
-  };
-
-  const handleDeleteFolder = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (confirm('Delete this folder? Assets inside will remain but won\'t be in this folder anymore.')) {
-      try {
+      } else if (deleteItem.type === 'folder') {
+        const id = deleteItem.id;
         if (isDemo) {
           localService.deleteFolder(id);
           setFolders(localService.getFolders());
@@ -1243,9 +1331,9 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
           await deleteDoc(doc(db, 'folders', id));
         }
         if (selectedFolderId === id) setSelectedFolderId(null);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `folders/${id}`);
       }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `${deleteItem.type}s/${deleteItem.id}`);
     }
   };
 
@@ -1336,10 +1424,9 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
                   };
                   input.click();
                 }}
-                className="hidden md:flex items-center gap-1 px-1.5 py-0.5 bg-zinc-900 text-white rounded-lg text-[10px] font-medium hover:bg-zinc-800 transition-all shadow-sm"
+                className="hidden md:flex items-center justify-center p-1 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-all shadow-sm"
               >
-                <Plus size={10} />
-                Upload
+                <Plus size={12} />
               </button>
             )}
             {user.uid !== 'public_user' ? (
@@ -1353,8 +1440,8 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
             )}
             <div className="flex items-center gap-1 pl-1 border-l border-zinc-200">
               <div className="hidden lg:block text-right">
-                <p className="text-[9px] font-bold text-zinc-900 truncate max-w-[60px]">{user.displayName || (isAdmin ? 'Admin' : 'Guest')}</p>
-                <p className="text-[7px] text-zinc-400 truncate max-w-[60px]">{isAdmin ? user.email : 'Read-only'}</p>
+                <p className="text-[9px] font-bold text-zinc-900 truncate max-w-[120px]">{user.displayName || (isAdmin ? 'Admin' : 'Guest')}</p>
+                <p className="text-[7px] text-zinc-400 truncate max-w-[120px]">{isAdmin ? user.email : 'Read-only'}</p>
               </div>
               <img 
                 src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email || 'U'}&background=18181b&color=fff`} 
@@ -1367,23 +1454,23 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
       </header>
 
       {/* Main Content - Two Column Layout */}
-      <div className="flex-1 flex overflow-hidden max-w-lg mx-auto w-full">
+      <div className="flex-1 flex overflow-hidden max-w-7xl mx-auto w-full">
         {/* Left Column - Folders */}
-        <aside className="w-36 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0">
+        <aside className="w-56 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0">
           <div className="p-1.5 flex items-center justify-between">
             <h2 className="text-[8px] font-bold uppercase tracking-widest text-zinc-400">Folders</h2>
             {isAdmin && (
               <button 
                 onClick={() => setIsFolderModalOpen(true)}
-                className="p-0.5 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
+                className="p-1.5 hover:bg-zinc-100 rounded-xl transition-all text-zinc-900 border border-zinc-200 shadow-sm"
                 title="New Folder"
               >
-                <FolderPlus size={12} />
+                <FolderPlus size={14} />
               </button>
             )}
           </div>
           
-          <nav className="flex-1 overflow-y-auto px-3 pb-6 space-y-1">
+          <nav className="flex-1 overflow-y-auto px-2 pb-6 space-y-1">
             <button 
               onClick={() => setSelectedFolderId(null)}
               className={cn(
@@ -1498,17 +1585,17 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
                 <>
                   <button 
                     onClick={() => setIsFolderModalOpen(true)}
-                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-white border border-zinc-200 text-zinc-900 rounded-lg text-[10px] font-medium hover:bg-zinc-50 transition-all"
+                    className="flex items-center justify-center p-2 bg-white border border-zinc-200 text-zinc-900 rounded-lg hover:bg-zinc-50 transition-all"
+                    title="New Subfolder"
                   >
-                    <FolderPlus size={12} />
-                    Subfolder
+                    <FolderPlus size={14} />
                   </button>
                   <button 
                     onClick={() => setIsUploadModalOpen(true)}
-                    className="flex items-center justify-center gap-1 px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-[10px] font-medium hover:bg-zinc-800 transition-all shadow-sm hover:shadow-md"
+                    className="flex items-center justify-center p-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-all shadow-sm hover:shadow-md"
+                    title="Upload"
                   >
-                    <Plus size={12} />
-                    Upload
+                    <Plus size={14} />
                   </button>
                 </>
               )}
@@ -1611,7 +1698,13 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
       </div>
 
       {/* Modals */}
-      <PreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />
+      <PreviewModal 
+        asset={previewAsset} 
+        onClose={() => setPreviewAsset(null)} 
+        onRename={(a: Asset) => setRenameItem({ id: a.id, name: a.name, type: 'asset' })}
+        onDelete={handleDelete}
+        isAdmin={isAdmin}
+      />
       <CreateFolderModal isOpen={isFolderModalOpen} onClose={() => setIsFolderModalOpen(false)} onCreate={handleCreateFolder} parentFolderName={selectedFolderName} />
       <UploadModal 
         isOpen={isUploadModalOpen} 
@@ -1625,6 +1718,15 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
         onRename={handleRename} 
         initialName={renameItem?.name || ''} 
         title={`Rename ${renameItem?.type === 'asset' ? 'Asset' : 'Folder'}`}
+      />
+      <DeleteModal
+        isOpen={!!deleteItem}
+        onClose={() => setDeleteItem(null)}
+        onDelete={executeDelete}
+        title={`Delete ${deleteItem?.type === 'asset' ? 'Asset' : 'Folder'}`}
+        message={deleteItem?.type === 'asset' 
+          ? `Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`
+          : `Delete folder "${deleteItem?.name}"? Assets inside will remain but won't be in this folder anymore.`}
       />
     </div>
   );
@@ -1651,7 +1753,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const isAdmin = !isDemo && user?.email === ADMIN_EMAIL;
+  const isAdmin = !isDemo && user?.email && ADMIN_EMAILS.includes(user.email);
 
   if (loading) {
     return (
