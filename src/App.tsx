@@ -11,7 +11,9 @@ import {
   GoogleAuthProvider, 
   onAuthStateChanged, 
   User, 
-  signOut 
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { 
   collection, 
@@ -25,13 +27,14 @@ import {
   Timestamp,
   updateDoc 
 } from 'firebase/firestore';
-import {
+import { 
   ref,
   uploadBytes,
   uploadBytesResumable,
   getDownloadURL,
   deleteObject
 } from 'firebase/storage';
+import { localService } from './services/localService';
 import { 
   Upload, 
   FileText, 
@@ -54,7 +57,11 @@ import {
   ArrowLeft,
   Edit2,
   Copy,
-  Check
+  Mail,
+  Lock,
+  User as UserIcon,
+  Check,
+  AlertCircle
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'motion/react';
@@ -67,6 +74,16 @@ import imageCompression from 'browser-image-compression';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+// Safe date conversion for both Firebase and LocalStorage
+const safeToDate = (date: any): Date => {
+  if (!date) return new Date();
+  if (typeof date.toDate === 'function') return date.toDate();
+  if (date instanceof Date) return date;
+  if (typeof date === 'string' || typeof date === 'number') return new Date(date);
+  if (date.seconds !== undefined) return new Date(date.seconds * 1000);
+  return new Date();
+};
 
 // --- Types ---
 interface Folder {
@@ -92,35 +109,224 @@ interface Asset {
 
 // --- Components ---
 
-const Login = () => {
-  const handleLogin = async () => {
+const Login = ({ onDemoMode }: { onDemoMode: () => void }) => {
+  const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleGoogleLogin = async () => {
     const provider = new GoogleAuthProvider();
     try {
+      setIsLoading(true);
+      setError(null);
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      if (error.code === 'auth/unauthorized-domain') {
+        setError("unauthorized-domain");
+      } else if (error.code === 'auth/operation-not-allowed') {
+        setError("Google sign-in is not enabled. Please enable it in your Firebase Console (Authentication > Sign-in method).");
+      } else {
+        setError(error.message || "An error occurred during login.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      if (isSignUp) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (error: any) {
+      console.error("Email auth failed", error);
+      if (error.code === 'auth/unauthorized-domain') {
+        setError("unauthorized-domain");
+      } else if (error.code === 'auth/operation-not-allowed') {
+        setError(error.message || "Authentication failed.");
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f5f5f4]">
+    <div className="min-h-screen flex items-center justify-center bg-[#f5f5f4] p-4">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-[32px] shadow-sm border border-zinc-200 p-12 text-center"
+        className="max-w-md w-full bg-white rounded-[32px] shadow-sm border border-zinc-200 p-8 sm:p-12 text-center"
       >
         <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mx-auto mb-8">
           <Upload className="text-white w-8 h-8" />
         </div>
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 mb-3">AssetHub</h1>
-        <p className="text-zinc-500 mb-10">Manage and organize your digital assets in one place.</p>
-        <button 
-          onClick={handleLogin}
-          className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-medium hover:bg-zinc-800 transition-all flex items-center justify-center gap-3"
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-          Continue with Google
-        </button>
+        <p className="text-zinc-500 mb-8">Manage and organize your digital assets in one place.</p>
+        
+        {error === 'unauthorized-domain' ? (
+          <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-[32px] text-left animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center shrink-0">
+                <AlertCircle className="text-amber-600" size={20} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-amber-900 mb-1">Domain Not Whitelisted</h3>
+                <p className="text-xs text-amber-800 leading-relaxed mb-4">
+                  Firebase security is blocking this domain. You can fix this in your console, or bypass it now to continue.
+                </p>
+                
+                <div className="space-y-2">
+                  <button 
+                    onClick={onDemoMode}
+                    className="w-full py-4 bg-zinc-900 text-white text-xs font-bold uppercase tracking-widest rounded-2xl hover:bg-zinc-800 transition-all shadow-lg flex items-center justify-center gap-2"
+                  >
+                    Bypass & Enter Now (Demo)
+                  </button>
+                  
+                  <button 
+                    onClick={() => setError('unauthorized-domain-details')}
+                    className="w-full py-3 bg-white border border-amber-200 text-amber-700 text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-amber-100/50 transition-all"
+                  >
+                    Show Instructions to Fix Cloud Login
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : error === 'unauthorized-domain-details' ? (
+          <div className="mb-8 p-6 bg-zinc-50 border border-zinc-200 rounded-[32px] text-left">
+            <h3 className="text-sm font-bold text-zinc-900 mb-4 flex items-center gap-2">
+              <button onClick={() => setError('unauthorized-domain')} className="p-1 hover:bg-zinc-200 rounded-lg transition-colors">
+                <ArrowLeft size={14} />
+              </button>
+              How to fix Cloud Login
+            </h3>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">1. Copy this domain</p>
+                <div className="flex items-center justify-between gap-2 bg-white p-2 rounded-xl border border-zinc-200">
+                  <code className="text-[10px] text-zinc-900 truncate font-mono font-bold">{window.location.hostname}</code>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.hostname);
+                      alert('Domain copied!');
+                    }}
+                    className="p-1.5 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors"
+                  >
+                    <Copy size={12} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">2. Add to Firebase</p>
+                <a 
+                  href={`https://console.firebase.google.com/project/gen-lang-client-0324813943/authentication/settings`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-2 w-full py-3 bg-white border border-zinc-200 text-zinc-900 text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-zinc-50 transition-all shadow-sm"
+                >
+                  Open "Authorized Domains" <ChevronRight size={12} />
+                </a>
+              </div>
+            </div>
+          </div>
+        ) : error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl text-left">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-red-600 mb-1">Configuration Required</p>
+                <p className="text-xs text-red-500 leading-relaxed">{error}</p>
+                <button 
+                  onClick={onDemoMode}
+                  className="mt-4 text-[10px] font-bold uppercase tracking-widest text-zinc-900 hover:underline flex items-center gap-1"
+                >
+                  Skip and use Demo Mode instead <ChevronRight size={10} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleEmailAuth} className="space-y-4 mb-8">
+          <div className="relative">
+            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+            <input 
+              type="email" 
+              placeholder="Email address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm outline-none focus:border-zinc-900 transition-all"
+            />
+          </div>
+          <div className="relative">
+            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+            <input 
+              type="password" 
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm outline-none focus:border-zinc-900 transition-all"
+            />
+          </div>
+          <button 
+            type="submit"
+            disabled={isLoading}
+            className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-medium hover:bg-zinc-800 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+          >
+            {isLoading ? <Loader2 className="animate-spin" size={20} /> : (isSignUp ? "Create Account" : "Sign In")}
+          </button>
+        </form>
+
+        <div className="relative mb-8">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-zinc-200"></div>
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-white px-4 text-zinc-400 font-bold tracking-widest">Or continue with</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-8">
+          <button 
+            onClick={handleGoogleLogin}
+            disabled={isLoading}
+            className="py-4 bg-white border border-zinc-200 text-zinc-900 rounded-2xl font-medium hover:bg-zinc-50 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+            Google
+          </button>
+          <button 
+            onClick={onDemoMode}
+            disabled={isLoading}
+            className="py-4 bg-zinc-100 text-zinc-900 rounded-2xl font-medium hover:bg-zinc-200 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+          >
+            Demo Mode
+          </button>
+        </div>
+
+        <p className="mt-8 text-sm text-zinc-500">
+          {isSignUp ? "Already have an account?" : "Don't have an account?"}
+          <button 
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="ml-2 text-zinc-900 font-semibold hover:underline"
+          >
+            {isSignUp ? "Sign In" : "Sign Up"}
+          </button>
+        </p>
       </motion.div>
     </div>
   );
@@ -143,11 +349,8 @@ const AssetCard = ({
   const isText = asset.type === 'text' || asset.mimeType.includes('text') || asset.name.endsWith('.txt') || asset.name.endsWith('.md');
 
   const handleDragStart = (e: React.DragEvent) => {
-    const downloadUrl = `${asset.mimeType}:${asset.name}:${asset.content}`;
-    e.dataTransfer.setData('DownloadURL', downloadUrl);
     e.dataTransfer.setData('text/plain', asset.content);
     e.dataTransfer.setData('text/uri-list', asset.content);
-    e.dataTransfer.setData('text/html', `<img src="${asset.content}" alt="${asset.name}">`);
     e.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -190,7 +393,7 @@ const AssetCard = ({
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-medium text-zinc-900 truncate">{asset.name}</h3>
             <p className="text-[11px] text-zinc-500 uppercase tracking-wider">
-              {format(asset.createdAt.toDate(), 'MMM d, yyyy')} • {(asset.size / 1024).toFixed(1)} KB
+              {format(safeToDate(asset.createdAt), 'MMM d, yyyy')} • {(asset.size / 1024).toFixed(1)} KB
             </p>
           </div>
         </div>
@@ -286,7 +489,7 @@ const AssetCard = ({
           {asset.name}
         </h3>
         <div className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">
-          {format(asset.createdAt.toDate(), 'MMM d, yyyy')}
+          {format(safeToDate(asset.createdAt), 'MMM d, yyyy')}
         </div>
       </div>
     </motion.div>
@@ -730,7 +933,7 @@ interface UploadingFile {
   error?: string;
 }
 
-const Dashboard = ({ user }: { user: User }) => {
+const Dashboard = ({ user, isDemo = false }: { user: User | { uid: string; photoURL?: string; displayName?: string; email?: string }; isDemo?: boolean }) => {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -788,66 +991,77 @@ const Dashboard = ({ user }: { user: User }) => {
           f.id === uploadId ? { ...f, progress: 10 } : f
         ));
 
-        // Sanitize filename
-        const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-        storagePath = `assets/${user.uid}/${Date.now()}_${sanitizedName}`;
-        const storageRef = ref(storage, storagePath);
-
-        // 2. Upload step (10-90%)
-        try {
-          console.log(`Uploading to storage: ${storagePath}`);
-          const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
-          
-          // Add a safety timeout for the upload task
-          const uploadPromise = new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              uploadTask.cancel();
-              reject(new Error("Upload timed out after 30 seconds"));
-            }, 30000);
-
-            uploadTask.on('state_changed', 
-              (snapshot) => {
-                const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                // Map 0-100% of upload to 10-90% of total progress
-                const totalProgress = 10 + (percent * 0.8);
-                setUploadingFiles(prev => prev.map(f => 
-                  f.id === uploadId ? { ...f, progress: Math.round(totalProgress) } : f
-                ));
-              }, 
-              (error) => {
-                clearTimeout(timeout);
-                reject(error);
-              }, 
-              () => {
-                clearTimeout(timeout);
-                resolve();
-              }
-            );
+        if (isDemo) {
+          // Demo mode: Store in LocalStorage as Base64
+          contentUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error("Failed to read file"));
+            reader.readAsDataURL(fileToUpload);
           });
+          storagePath = 'local-storage';
+        } else {
+          // Sanitize filename
+          const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+          storagePath = `assets/${user.uid}/${Date.now()}_${sanitizedName}`;
+          const storageRef = ref(storage, storagePath);
 
-          await uploadPromise;
-          contentUrl = await getDownloadURL(storageRef);
-          console.log(`Upload successful: ${contentUrl}`);
-          
-        } catch (storageError: any) {
-          console.warn("Storage upload failed or timed out, trying fallback:", storageError);
-          
-          // Fallback: If file is small (< 1MB), store as Base64 in Firestore
-          if (fileToUpload.size < 1024 * 1024) {
-            setUploadingFiles(prev => prev.map(f => 
-              f.id === uploadId ? { ...f, progress: 50, status: 'uploading' } : f
-            ));
+          // 2. Upload step (10-90%)
+          try {
+            console.log(`Uploading to storage: ${storagePath}`);
+            const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
             
-            contentUrl = await new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = () => reject(new Error("Failed to read file for fallback"));
-              reader.readAsDataURL(fileToUpload);
+            // Add a safety timeout for the upload task
+            const uploadPromise = new Promise<void>((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                uploadTask.cancel();
+                reject(new Error("Upload timed out after 30 seconds"));
+              }, 30000);
+
+              uploadTask.on('state_changed', 
+                (snapshot) => {
+                  const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                  // Map 0-100% of upload to 10-90% of total progress
+                  const totalProgress = 10 + (percent * 0.8);
+                  setUploadingFiles(prev => prev.map(f => 
+                    f.id === uploadId ? { ...f, progress: Math.round(totalProgress) } : f
+                  ));
+                }, 
+                (error) => {
+                  clearTimeout(timeout);
+                  reject(error);
+                }, 
+                () => {
+                  clearTimeout(timeout);
+                  resolve();
+                }
+              );
             });
-            storagePath = 'firestore-embedded';
-            console.log("Using Firestore fallback for small file");
-          } else {
-            throw storageError;
+
+            await uploadPromise;
+            contentUrl = await getDownloadURL(storageRef);
+            console.log(`Upload successful: ${contentUrl}`);
+            
+          } catch (storageError: any) {
+            console.warn("Storage upload failed or timed out, trying fallback:", storageError);
+            
+            // Fallback: If file is small (< 1MB), store as Base64 in Firestore
+            if (fileToUpload.size < 1024 * 1024) {
+              setUploadingFiles(prev => prev.map(f => 
+                f.id === uploadId ? { ...f, progress: 50, status: 'uploading' } : f
+              ));
+              
+              contentUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = () => reject(new Error("Failed to read file for fallback"));
+                reader.readAsDataURL(fileToUpload);
+              });
+              storagePath = 'firestore-embedded';
+              console.log("Using Firestore fallback for small file");
+            } else {
+              throw storageError;
+            }
           }
         }
 
@@ -857,10 +1071,9 @@ const Dashboard = ({ user }: { user: User }) => {
         ));
 
         const isTextFile = file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.csv');
-
-        await addDoc(collection(db, 'assets'), {
+        const assetData = {
           name: file.name,
-          type: file.type.startsWith('image/') ? 'image' : (isTextFile ? 'text' : 'file'),
+          type: file.type.startsWith('image/') ? 'image' : (isTextFile ? 'text' : 'file') as any,
           content: contentUrl,
           storagePath,
           size: file.size,
@@ -868,7 +1081,14 @@ const Dashboard = ({ user }: { user: User }) => {
           ownerId: user.uid,
           folderId: selectedFolderId || null,
           createdAt: Timestamp.now()
-        });
+        };
+
+        if (isDemo) {
+          localService.addAsset(assetData as any);
+          setAssets(localService.getAssets());
+        } else {
+          await addDoc(collection(db, 'assets'), assetData);
+        }
 
         setUploadingFiles(prev => prev.map(f => 
           f.id === uploadId ? { ...f, status: 'completed', progress: 100 } : f
@@ -921,6 +1141,11 @@ const Dashboard = ({ user }: { user: User }) => {
 
   // Fetch Folders
   useEffect(() => {
+    if (isDemo) {
+      setFolders(localService.getFolders());
+      return;
+    }
+
     const q = query(
       collection(db, 'folders'),
       where('ownerId', '==', user.uid)
@@ -937,10 +1162,16 @@ const Dashboard = ({ user }: { user: User }) => {
     });
 
     return () => unsubscribe();
-  }, [user.uid]);
+  }, [user.uid, isDemo]);
 
   // Fetch Assets
   useEffect(() => {
+    if (isDemo) {
+      setAssets(localService.getAssets());
+      setLoading(false);
+      return;
+    }
+
     const q = query(
       collection(db, 'assets'),
       where('ownerId', '==', user.uid)
@@ -958,16 +1189,23 @@ const Dashboard = ({ user }: { user: User }) => {
     });
 
     return () => unsubscribe();
-  }, [user.uid]);
+  }, [user.uid, isDemo]);
 
   const handleCreateFolder = async (name: string) => {
     try {
-      await addDoc(collection(db, 'folders'), {
+      const folderData = {
         name,
         ownerId: user.uid,
         parentId: selectedFolderId || null,
         createdAt: Timestamp.now()
-      });
+      };
+
+      if (isDemo) {
+        localService.addFolder(folderData as any);
+        setFolders(localService.getFolders());
+      } else {
+        await addDoc(collection(db, 'folders'), folderData);
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'folders');
     }
@@ -976,13 +1214,18 @@ const Dashboard = ({ user }: { user: User }) => {
   const handleDelete = async (asset: Asset) => {
     if (confirm('Are you sure you want to delete this asset?')) {
       try {
-        // 1. Delete from Storage if exists
-        if (asset.storagePath) {
-          const storageRef = ref(storage, asset.storagePath);
-          await deleteObject(storageRef);
+        if (isDemo) {
+          localService.deleteAsset(asset.id);
+          setAssets(localService.getAssets());
+        } else {
+          // 1. Delete from Storage if exists
+          if (asset.storagePath && asset.storagePath !== 'firestore-embedded') {
+            const storageRef = ref(storage, asset.storagePath);
+            await deleteObject(storageRef);
+          }
+          // 2. Delete from Firestore
+          await deleteDoc(doc(db, 'assets', asset.id));
         }
-        // 2. Delete from Firestore
-        await deleteDoc(doc(db, 'assets', asset.id));
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `assets/${asset.id}`);
       }
@@ -993,7 +1236,13 @@ const Dashboard = ({ user }: { user: User }) => {
     e.stopPropagation();
     if (confirm('Delete this folder? Assets inside will remain but won\'t be in this folder anymore.')) {
       try {
-        await deleteDoc(doc(db, 'folders', id));
+        if (isDemo) {
+          localService.deleteFolder(id);
+          setFolders(localService.getFolders());
+          setAssets(localService.getAssets());
+        } else {
+          await deleteDoc(doc(db, 'folders', id));
+        }
         if (selectedFolderId === id) setSelectedFolderId(null);
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `folders/${id}`);
@@ -1004,10 +1253,21 @@ const Dashboard = ({ user }: { user: User }) => {
   const handleRename = async (newName: string) => {
     if (!renameItem) return;
     try {
-      const collectionName = renameItem.type === 'asset' ? 'assets' : 'folders';
-      await updateDoc(doc(db, collectionName, renameItem.id), {
-        name: newName
-      });
+      if (isDemo) {
+        if (renameItem.type === 'asset') {
+          localService.updateAsset(renameItem.id, { name: newName });
+          setAssets(localService.getAssets());
+        } else {
+          const folders = localService.getFolders();
+          localService.saveFolders(folders.map(f => f.id === renameItem.id ? { ...f, name: newName } : f));
+          setFolders(localService.getFolders());
+        }
+      } else {
+        const collectionName = renameItem.type === 'asset' ? 'assets' : 'folders';
+        await updateDoc(doc(db, collectionName, renameItem.id), {
+          name: newName
+        });
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `${renameItem.type}s/${renameItem.id}`);
     }
@@ -1030,216 +1290,364 @@ const Dashboard = ({ user }: { user: User }) => {
     : 'All Assets';
 
   return (
-    <div className="h-screen w-full bg-zinc-200 flex items-center justify-center p-4 sm:p-8">
-      <div className="w-full max-w-[500px] aspect-[2/3] max-h-[90vh] flex flex-col bg-[#f5f5f4] text-zinc-900 font-sans overflow-hidden rounded-[40px] shadow-2xl border-[8px] border-zinc-900 relative">
-        {/* Header */}
-        <header className="bg-white border-b border-zinc-200 px-6 py-4 flex-shrink-0">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center">
-                <Upload className="text-white w-4 h-4" />
-              </div>
-              <h1 className="text-lg font-semibold tracking-tight">AssetHub</h1>
+    <div className="h-screen flex flex-col bg-[#f5f5f4] text-zinc-900 font-sans overflow-hidden">
+      {/* Header */}
+      <header className="bg-white border-b border-zinc-200 px-6 py-4 flex-shrink-0">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center">
+              <Upload className="text-white w-5 h-5" />
             </div>
+            <h1 className="text-xl font-semibold tracking-tight hidden sm:block">AssetHub</h1>
+          </div>
 
-            <div className="flex items-center gap-2">
-              <button onClick={() => signOut(auth)} className="p-2 text-zinc-400 hover:text-red-600 transition-all"><LogOut size={18} /></button>
-              <img src={user.photoURL || ''} alt="" className="w-8 h-8 rounded-full border border-zinc-200" />
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              "px-3 py-1 rounded-full text-[10px] font-bold border uppercase tracking-widest flex items-center gap-1.5",
+              isDemo ? "bg-zinc-100 text-zinc-500 border-zinc-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"
+            )}>
+              {isDemo ? "Public Session" : "Cloud Mode"}
             </div>
           </div>
-        </header>
 
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Search & Folders Bar */}
-          <div className="p-4 bg-white border-b border-zinc-100 space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search assets..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-xl text-xs transition-all outline-none"
+          <div className="flex-1 max-w-md relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search assets..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-xl text-sm transition-all outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.multiple = true;
+                input.onchange = (e) => {
+                  const files = Array.from((e.target as HTMLInputElement).files || []);
+                  if (files.length > 0) handleUpload(files);
+                };
+                input.click();
+              }}
+              className="hidden md:flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 transition-all shadow-sm"
+            >
+              <Plus size={16} />
+              Quick Upload
+            </button>
+            <button onClick={() => isDemo ? window.location.reload() : signOut(auth)} className="p-2.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><LogOut size={20} /></button>
+            <div className="flex items-center gap-3 pl-2 border-l border-zinc-200">
+              <div className="hidden lg:block text-right">
+                <p className="text-xs font-bold text-zinc-900 truncate max-w-[150px]">{user.displayName || 'Guest'}</p>
+                <p className="text-[10px] text-zinc-400 truncate max-w-[150px]">{isDemo ? 'Local Storage' : user.email}</p>
+              </div>
+              <img 
+                src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email || 'U'}&background=18181b&color=fff`} 
+                alt={user.displayName || 'User'} 
+                className="w-9 h-9 rounded-full border border-zinc-200 object-cover" 
               />
             </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content - Two Column Layout */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Column - Folders */}
+        <aside className="w-80 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0">
+          <div className="p-6 flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-400">Folders</h2>
+            <button 
+              onClick={() => setIsFolderModalOpen(true)}
+              className="p-1.5 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
+              title="New Folder"
+            >
+              <FolderPlus size={18} />
+            </button>
+          </div>
+          
+          <nav className="flex-1 overflow-y-auto px-3 pb-6 space-y-1">
+            <button 
+              onClick={() => setSelectedFolderId(null)}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+                !selectedFolderId ? "bg-zinc-900 text-white shadow-md" : "text-zinc-600 hover:bg-zinc-100"
+              )}
+            >
+              <Grid size={18} />
+              Root Assets
+            </button>
             
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-              <button 
-                onClick={() => setSelectedFolderId(null)}
-                className={cn(
-                  "flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                  !selectedFolderId ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
-                )}
+            {rootFolders.map(folder => {
+              const Item = FolderItem as any;
+              return (
+                <Item 
+                  key={folder.id} 
+                  folder={folder} 
+                  folders={sortedFolders} 
+                  selectedFolderId={selectedFolderId} 
+                  onSelect={setSelectedFolderId} 
+                  onDelete={handleDeleteFolder}
+                  onRename={(e: React.MouseEvent, f: Folder) => {
+                    e.stopPropagation();
+                    setRenameItem({ id: f.id, name: f.name, type: 'folder' });
+                  }}
+                />
+              );
+            })}
+          </nav>
+
+          <div className="p-6 border-t border-zinc-100">
+            <div className="bg-zinc-50 rounded-2xl p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2">Storage</p>
+              <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                <div className="h-full bg-zinc-900 w-1/5" />
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-2 font-medium">
+                {storage.app.options.storageBucket || 'Not configured'}
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        {/* Right Column - Assets */}
+        <main 
+          {...getGlobalRootProps()}
+          className="flex-1 flex flex-col bg-[#f5f5f4] overflow-hidden relative"
+        >
+          <input {...getGlobalInputProps()} />
+          
+          <AnimatePresence>
+            {isDraggingGlobal && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onDragLeave={() => setIsDraggingGlobal(false)}
+                className="absolute inset-0 z-40 bg-zinc-900/80 backdrop-blur-sm flex flex-col items-center justify-center text-white p-12"
               >
-                All
-              </button>
-              {rootFolders.map(folder => (
+                <div className="w-24 h-24 bg-white/10 rounded-[40px] flex items-center justify-center mb-6 border border-white/20">
+                  <Upload className="w-10 h-10" />
+                </div>
+                <h2 className="text-3xl font-semibold mb-2">Drop to upload</h2>
+                <p className="text-white/60">Your files will be uploaded to {selectedFolderName}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="p-8 flex-shrink-0 flex items-end justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-2 text-zinc-400 mb-2">
+                {selectedFolderId && (
+                  <button onClick={() => setSelectedFolderId(null)} className="hover:text-zinc-900 transition-colors">
+                    <ArrowLeft size={16} />
+                  </button>
+                )}
+                <span className="text-xs font-bold uppercase tracking-widest">Library</span>
+              </div>
+              <h2 className="text-4xl font-semibold tracking-tight text-zinc-900 mb-2">{selectedFolderName}</h2>
+              <p className="text-zinc-500 font-medium">
+                {filteredAssets.length} {filteredAssets.length === 1 ? 'asset' : 'assets'} in this view
+              </p>
+            </div>
+
+            {/* View Controls */}
+            <div className="flex items-center gap-6">
+              <div className="flex items-center bg-zinc-100 p-1 rounded-xl">
                 <button 
-                  key={folder.id}
-                  onClick={() => setSelectedFolderId(folder.id)}
+                  onClick={() => setViewMode('grid')}
                   className={cn(
-                    "flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5",
-                    selectedFolderId === folder.id ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                    "p-1.5 rounded-lg transition-all",
+                    viewMode === 'grid' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
                   )}
                 >
-                  <FolderIcon size={12} />
-                  {folder.name}
+                  <Grid size={18} />
                 </button>
-              ))}
+                <button 
+                  onClick={() => setViewMode('list')}
+                  className={cn(
+                    "p-1.5 rounded-lg transition-all",
+                    viewMode === 'list' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
+                  )}
+                >
+                  <ListIcon size={18} />
+                </button>
+              </div>
+
+              {viewMode === 'grid' && (
+                <div className="hidden md:flex items-center gap-3">
+                  <button onClick={() => setGridSize(Math.max(1, gridSize - 1))} className="text-zinc-400 hover:text-zinc-600">
+                    <Search size={14} className="scale-90" />
+                  </button>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="5" 
+                    step="1"
+                    value={gridSize}
+                    onChange={(e) => setGridSize(parseInt(e.target.value))}
+                    className="w-24 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
+                  />
+                  <button onClick={() => setGridSize(Math.min(5, gridSize + 1))} className="text-zinc-400 hover:text-zinc-600">
+                    <Search size={18} />
+                  </button>
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest w-12">
+                    {gridSize === 1 ? 'Tiny' : gridSize === 2 ? 'Small' : gridSize === 3 ? 'Medium' : gridSize === 4 ? 'Large' : 'Huge'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
               <button 
                 onClick={() => setIsFolderModalOpen(true)}
-                className="flex-shrink-0 p-1.5 bg-zinc-100 text-zinc-400 rounded-lg hover:bg-zinc-200 transition-all"
+                className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-zinc-200 text-zinc-900 rounded-2xl font-medium hover:bg-zinc-50 transition-all"
               >
-                <Plus size={14} />
+                <FolderPlus size={20} />
+                Subfolder
+              </button>
+              <button 
+                onClick={() => setIsUploadModalOpen(true)}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-2xl font-medium hover:bg-zinc-800 transition-all shadow-sm hover:shadow-md"
+              >
+                <Plus size={20} />
+                Upload
               </button>
             </div>
           </div>
 
-          <main 
-            {...getGlobalRootProps()}
-            className="flex-1 flex flex-col bg-[#f5f5f4] overflow-hidden relative"
-          >
-            <input {...getGlobalInputProps()} />
-            
-            <AnimatePresence>
-              {isDraggingGlobal && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onDragLeave={() => setIsDraggingGlobal(false)}
-                  className="absolute inset-0 z-40 bg-zinc-900/80 backdrop-blur-sm flex flex-col items-center justify-center text-white p-6 text-center"
-                >
-                  <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center mb-4 border border-white/20">
-                    <Upload className="w-8 h-8" />
-                  </div>
-                  <h2 className="text-xl font-semibold mb-1">Drop to upload</h2>
-                  <p className="text-white/60 text-xs">Files will be added to {selectedFolderName}</p>
-                </motion.div>
+          <div className="flex-1 overflow-y-auto px-8 pb-12">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-32 gap-4">
+                <Loader2 className="w-10 h-10 text-zinc-300 animate-spin" />
+                <p className="text-zinc-400 font-medium">Loading your library...</p>
+              </div>
+            ) : filteredAssets.length > 0 ? (
+              <div className={cn(
+                viewMode === 'grid' 
+                  ? "grid gap-6" 
+                  : "flex flex-col bg-white rounded-2xl border border-zinc-200 overflow-hidden"
               )}
-            </AnimatePresence>
-
-            <div className="p-4 flex-shrink-0 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold tracking-tight text-zinc-900">{selectedFolderName}</h2>
-                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
-                  {filteredAssets.length} Assets
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                  className="p-2 bg-white border border-zinc-200 rounded-xl text-zinc-600 hover:bg-zinc-50 transition-all"
-                >
-                  {viewMode === 'grid' ? <ListIcon size={16} /> : <Grid size={16} />}
-                </button>
-                <button 
-                  onClick={() => setIsUploadModalOpen(true)}
-                  className="p-2 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-sm"
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-4 pb-8">
-              {loading ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-3">
-                  <Loader2 className="w-8 h-8 text-zinc-300 animate-spin" />
-                  <p className="text-xs text-zinc-400 font-medium">Loading...</p>
-                </div>
-              ) : filteredAssets.length > 0 ? (
-                <div className={cn(
-                  viewMode === 'grid' 
-                    ? "grid grid-cols-2 gap-4" 
-                    : "flex flex-col bg-white rounded-2xl border border-zinc-200 overflow-hidden"
-                )}>
-                  <AnimatePresence mode="popLayout">
-                    {uploadingFiles.map(file => (
-                      <motion.div 
-                        key={file.id} 
-                        layout
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        className={cn(
-                          "bg-white rounded-2xl border border-zinc-200 p-3 flex flex-col gap-2",
-                          viewMode === 'list' && "flex-row items-center h-14"
-                        )}
-                      >
-                        <div className={cn(
-                          "bg-zinc-100 rounded-xl flex items-center justify-center relative overflow-hidden",
-                          viewMode === 'grid' ? "aspect-video" : "w-8 h-8 flex-shrink-0"
-                        )}>
-                          <Loader2 className="w-4 h-4 text-zinc-300 animate-spin z-10" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold truncate text-zinc-400">{file.name}</p>
-                        </div>
-                      </motion.div>
-                    ))}
-
-                    {filteredAssets.map((asset: any) => {
-                      const Card = AssetCard as any;
-                      return (
-                        <Card 
-                          key={asset.id} 
-                          asset={asset} 
-                          viewMode={viewMode}
-                          onDelete={handleDelete}
-                          onPreview={setPreviewAsset}
-                          onRename={(a: Asset) => setRenameItem({ id: a.id, name: a.name, type: 'asset' })}
+              style={viewMode === 'grid' ? {
+                gridTemplateColumns: `repeat(${gridSize === 1 ? 6 : gridSize === 2 ? 5 : gridSize === 3 ? 4 : gridSize === 4 ? 3 : 2}, minmax(0, 1fr))`
+              } : {}}
+              >
+                <AnimatePresence mode="popLayout">
+                  {/* Uploading placeholders */}
+                  {uploadingFiles.map(file => (
+                    <motion.div 
+                      key={file.id} 
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className={cn(
+                        "bg-white rounded-3xl border border-zinc-200 p-4 flex flex-col gap-3",
+                        viewMode === 'list' && "flex-row items-center h-16"
+                      )}
+                    >
+                      <div className={cn(
+                        "bg-zinc-100 rounded-2xl flex items-center justify-center relative overflow-hidden",
+                        viewMode === 'grid' ? "aspect-video" : "w-10 h-10 flex-shrink-0"
+                      )}>
+                        <Loader2 className="w-5 h-5 text-zinc-300 animate-spin z-10" />
+                        <motion.div 
+                          className="absolute bottom-0 left-0 h-1 bg-zinc-900/10" 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${file.progress}%` }}
                         />
-                      );
-                    })}
-                  </AnimatePresence>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="w-16 h-16 bg-zinc-100 rounded-[24px] flex items-center justify-center mb-4">
-                    <FileIcon className="text-zinc-300 w-8 h-8" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-zinc-900 mb-1">No assets</h3>
-                  <p className="text-xs text-zinc-500 max-w-[200px] mx-auto">
-                    {searchQuery ? "No matches found." : "This folder is empty."}
-                  </p>
-                </div>
-              )}
-            </div>
-          </main>
-        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate text-zinc-400">{file.name}</p>
+                        {viewMode === 'grid' && (
+                          <div className="mt-2 h-1 bg-zinc-100 rounded-full overflow-hidden">
+                            <motion.div 
+                              className="h-full bg-zinc-900" 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${file.progress}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
 
-        {/* Modals */}
-        <PreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />
-        <CreateFolderModal isOpen={isFolderModalOpen} onClose={() => setIsFolderModalOpen(false)} onCreate={handleCreateFolder} parentFolderName={selectedFolderName} />
-        <UploadModal 
-          isOpen={isUploadModalOpen} 
-          onClose={() => setIsUploadModalOpen(false)} 
-          onUpload={handleUpload}
-          uploadingFiles={uploadingFiles}
-        />
-        <RenameModal 
-          isOpen={!!renameItem} 
-          onClose={() => setRenameItem(null)} 
-          onRename={handleRename} 
-          initialName={renameItem?.name || ''} 
-          title={`Rename ${renameItem?.type === 'asset' ? 'Asset' : 'Folder'}`}
-        />
+                  {filteredAssets.map((asset: any) => {
+                    const Card = AssetCard as any;
+                    return (
+                      <Card 
+                        key={asset.id} 
+                        asset={asset} 
+                        viewMode={viewMode}
+                        onDelete={handleDelete}
+                        onPreview={setPreviewAsset}
+                        onRename={(a: Asset) => setRenameItem({ id: a.id, name: a.name, type: 'asset' })}
+                      />
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-32 text-center">
+                <div className="w-20 h-20 bg-zinc-100 rounded-[32px] flex items-center justify-center mb-6">
+                  <FileIcon className="text-zinc-300 w-10 h-10" />
+                </div>
+                <h3 className="text-xl font-semibold text-zinc-900 mb-2">No assets found</h3>
+                <p className="text-zinc-500 max-w-xs mx-auto mb-8">
+                  {searchQuery ? "We couldn't find any assets matching your search." : "This folder is empty. Start by uploading your first image or text file."}
+                </p>
+                {!searchQuery && (
+                  <button 
+                    onClick={() => setIsUploadModalOpen(true)}
+                    className="px-8 py-3 bg-white border border-zinc-200 rounded-2xl font-medium hover:bg-zinc-50 transition-all"
+                  >
+                    Upload your first asset
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </main>
       </div>
+
+      {/* Modals */}
+      <PreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />
+      <CreateFolderModal isOpen={isFolderModalOpen} onClose={() => setIsFolderModalOpen(false)} onCreate={handleCreateFolder} parentFolderName={selectedFolderName} />
+      <UploadModal 
+        isOpen={isUploadModalOpen} 
+        onClose={() => setIsUploadModalOpen(false)} 
+        onUpload={handleUpload}
+        uploadingFiles={uploadingFiles}
+      />
+      <RenameModal 
+        isOpen={!!renameItem} 
+        onClose={() => setRenameItem(null)} 
+        onRename={handleRename} 
+        initialName={renameItem?.name || ''} 
+        title={`Rename ${renameItem?.type === 'asset' ? 'Asset' : 'Folder'}`}
+      />
     </div>
   );
 };
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | { uid: string; email?: string; displayName?: string } | null>({ 
+    uid: 'public_user', 
+    email: 'public@assethub.local', 
+    displayName: 'Public Guest' 
+  });
+  const [loading, setLoading] = useState(false);
+  const [isDemo, setIsDemo] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser);
+        setIsDemo(false);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -1252,5 +1660,5 @@ export default function App() {
     );
   }
 
-  return user ? <Dashboard user={user} /> : <Login />;
+  return <Dashboard user={user!} isDemo={isDemo} />;
 }
