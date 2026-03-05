@@ -25,6 +25,10 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.email == "arc.quocphan9999@gmail.com";
+    }
+
     function isValidAsset(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() < 255 &&
              data.type in ['image', 'text'] &&
@@ -43,17 +47,17 @@ service cloud.firestore {
     }
 
     match /folders/{folderId} {
-      allow read: if isOwner(resource.data.ownerId);
-      allow create: if isAuthenticated() && isValidFolder(request.resource.data);
-      allow update: if isOwner(resource.data.ownerId) && isValidFolder(request.resource.data);
-      allow delete: if isOwner(resource.data.ownerId);
+      allow read: if request.auth != null;
+      allow create: if isAdmin() && isValidFolder(request.resource.data);
+      allow update: if isAdmin() && isValidFolder(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /assets/{assetId} {
-      allow read: if isOwner(resource.data.ownerId);
-      allow create: if isAuthenticated() && isValidAsset(request.resource.data);
-      allow update: if isOwner(resource.data.ownerId) && isValidAsset(request.resource.data);
-      allow delete: if isOwner(resource.data.ownerId);
+      allow read: if request.auth != null;
+      allow create: if isAdmin() && isValidAsset(request.resource.data);
+      allow update: if isAdmin() && isValidAsset(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /users/{userId} {

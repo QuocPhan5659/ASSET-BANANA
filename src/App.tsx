@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Component } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { 
   auth, 
   db, 
@@ -350,16 +350,49 @@ const AssetCard = ({
   isAdmin?: boolean;
 }) => {
   const [isCopying, setIsCopying] = useState(false);
+  const dragRef = useRef(false);
   const isText = asset.type === 'text' || asset.mimeType.includes('text') || asset.name.endsWith('.txt') || asset.name.endsWith('.md');
 
   const handleDragStart = (e: React.DragEvent) => {
-    if (!isAdmin) {
-      e.preventDefault();
-      return;
+    dragRef.current = true;
+    const url = asset.content;
+    
+    // If it's a base64 string, it can be very large and cause freezes in dataTransfer
+    const isBase64 = url.startsWith('data:');
+    
+    try {
+      // NEVER set full base64 in DownloadURL or uri-list, it's the main cause of freezes
+      if (!isBase64) { 
+        e.dataTransfer.setData('text/plain', url);
+        e.dataTransfer.setData('text/uri-list', url);
+        
+        if (asset.type === 'image') {
+          const downloadUrl = `${asset.mimeType || 'image/png'}:${asset.name}:${url}`;
+          e.dataTransfer.setData('DownloadURL', downloadUrl);
+        }
+      } else {
+        // For base64, only set the name and a custom type to prevent browser freeze
+        e.dataTransfer.setData('text/plain', asset.name);
+        e.dataTransfer.setData('application/x-asset-id', asset.id);
+        // We can't safely drag-out base64 images without freezing the UI in many browsers
+      }
+    } catch (err) {
+      console.warn('Drag data transfer failed');
     }
-    e.dataTransfer.setData('text/plain', asset.content);
-    e.dataTransfer.setData('text/uri-list', asset.content);
+    
     e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleDragEnd = () => {
+    // Small timeout to prevent the click event from firing immediately after drag
+    setTimeout(() => {
+      dragRef.current = false;
+    }, 100);
+  };
+
+  const handleClick = () => {
+    if (dragRef.current) return;
+    onPreview(asset);
   };
 
   const handleCopyContent = async (e: React.MouseEvent) => {
@@ -380,49 +413,48 @@ const AssetCard = ({
     return (
       <motion.div 
         layout
-        draggable
+        draggable="true"
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onClick={handleClick}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 10 }}
-        className="group flex items-center justify-between p-3 bg-white hover:bg-zinc-50 border-b border-zinc-100 transition-colors cursor-grab active:cursor-grabbing"
+        className="group flex items-center justify-between p-3 bg-white hover:bg-zinc-50 border-b border-zinc-100 transition-colors cursor-grab active:cursor-grabbing select-none"
       >
-        <div 
-          onClick={() => onPreview(asset)}
-          className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer"
-        >
-          <div className="w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-4 h-4 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
             {asset.type === 'image' ? (
-              <img src={asset.content} alt="" className="w-full h-full object-cover pointer-events-none" referrerPolicy="no-referrer" />
+              <img src={asset.content} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" draggable="false" />
             ) : (
-              <FileIcon size={18} className="text-zinc-400 pointer-events-none" />
+              <FileIcon size={6} className="text-zinc-400" />
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-medium text-zinc-900 truncate">{asset.name}</h3>
-            <p className="text-[11px] text-zinc-500 uppercase tracking-wider">
-              {format(safeToDate(asset.createdAt), 'MMM d, yyyy')} • {(asset.size / 1024).toFixed(1)} KB
+            <h3 className="text-[7px] font-medium text-zinc-900 truncate">{asset.name}</h3>
+            <p className="text-[5px] text-zinc-500 uppercase tracking-wider">
+              {format(safeToDate(asset.createdAt), 'MMM d')} • {(asset.size / 1024).toFixed(0)} KB
             </p>
           </div>
         </div>
         
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {isText && (
             <button 
               onClick={handleCopyContent} 
               className={cn(
-                "p-2 rounded-lg transition-colors",
+                "p-0.5 rounded-lg transition-colors",
                 isCopying ? "bg-emerald-100 text-emerald-600" : "hover:bg-zinc-200 text-zinc-600"
               )}
               title="Copy content"
             >
-              {isCopying ? <Check size={16} /> : <Copy size={16} />}
+              {isCopying ? <Check size={6} /> : <Copy size={6} />}
             </button>
           )}
           {isAdmin && (
             <>
-              <button onClick={(e) => { e.stopPropagation(); onRename(asset); }} className="p-2 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"><Edit2 size={16} /></button>
-              <button onClick={(e) => { e.stopPropagation(); onDelete(asset); }} className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"><Trash2 size={16} /></button>
+              <button onClick={(e) => { e.stopPropagation(); onRename(asset); }} className="p-0.5 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"><Edit2 size={6} /></button>
+              <button onClick={(e) => { e.stopPropagation(); onDelete(asset); }} className="p-0.5 hover:bg-red-100 rounded-lg text-red-600 transition-colors"><Trash2 size={6} /></button>
             </>
           )}
         </div>
@@ -433,80 +465,74 @@ const AssetCard = ({
   return (
     <motion.div 
       layout
-      draggable
+      draggable="true"
       onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onClick={handleClick}
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="group relative bg-white rounded-2xl border border-zinc-200 overflow-hidden hover:shadow-md transition-all h-full flex flex-col cursor-grab active:cursor-grabbing"
+      className="group relative bg-white rounded-xl border border-zinc-200 overflow-hidden hover:shadow-md transition-all h-full flex flex-col cursor-grab active:cursor-grabbing select-none"
     >
-      <div 
-        onClick={() => onPreview(asset)}
-        className="aspect-[2/3] bg-zinc-50 flex items-center justify-center relative overflow-hidden cursor-pointer"
-      >
+      <div className="aspect-[2/3] bg-zinc-50 flex items-center justify-center relative overflow-hidden">
         {asset.type === 'image' ? (
           <img 
             src={asset.content} 
             alt={asset.name} 
-            className="w-full h-full object-cover pointer-events-none"
+            className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
+            draggable="false"
           />
         ) : asset.type === 'text' ? (
-          <div className="flex flex-col items-center gap-2 pointer-events-none">
-            <FileText className="w-12 h-12 text-zinc-300" />
-            <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest">Text File</span>
+          <div className="flex flex-col items-center gap-1">
+            <FileText size={12} className="text-zinc-300" />
+            <span className="text-[5px] font-mono text-zinc-400 uppercase tracking-widest">Text</span>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2 pointer-events-none">
-            <FileIcon className="w-12 h-12 text-zinc-300" />
-            <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest">File</span>
+          <div className="flex flex-col items-center gap-1">
+            <FileIcon size={12} className="text-zinc-300" />
+            <span className="text-[5px] font-mono text-zinc-400 uppercase tracking-widest">File</span>
           </div>
         )}
-      </div>
-      
-      <div className="p-4 flex-1 flex flex-col">
-        <div className="flex items-center gap-2 mb-2">
+        
+        <div className="absolute top-1 right-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           {isText && (
             <button 
               onClick={handleCopyContent} 
               className={cn(
-                "p-1.5 rounded-lg transition-colors",
-                isCopying ? "bg-emerald-100 text-emerald-600" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900"
+                "p-0.5 rounded-md shadow-sm backdrop-blur-md transition-colors",
+                isCopying ? "bg-emerald-500 text-white" : "bg-white/80 hover:bg-white text-zinc-600"
               )}
-              title="Copy content"
             >
-              {isCopying ? <Check size={14} /> : <Copy size={14} />}
+              {isCopying ? <Check size={6} /> : <Copy size={6} />}
             </button>
           )}
           {isAdmin && (
             <>
               <button 
                 onClick={(e) => { e.stopPropagation(); onRename(asset); }}
-                className="p-1.5 hover:bg-zinc-100 rounded-lg text-zinc-500 hover:text-zinc-900 transition-colors"
-                title="Rename"
+                className="p-0.5 bg-white/80 hover:bg-white text-zinc-600 rounded-md shadow-sm backdrop-blur-md transition-colors"
               >
-                <Edit2 size={14} />
+                <Edit2 size={6} />
               </button>
               <button 
                 onClick={(e) => { e.stopPropagation(); onDelete(asset); }}
-                className="p-1.5 hover:bg-red-50 rounded-lg text-zinc-500 hover:text-red-600 transition-colors"
-                title="Delete"
+                className="p-0.5 bg-white/80 hover:bg-red-50 text-red-600 rounded-md shadow-sm backdrop-blur-md transition-colors"
               >
-                <Trash2 size={14} />
+                <Trash2 size={6} />
               </button>
             </>
           )}
-          <div className="ml-auto text-[10px] text-zinc-400 font-medium uppercase tracking-wider">
-            {(asset.size / 1024).toFixed(1)} KB
-          </div>
         </div>
-
-        <h3 className="text-sm font-semibold text-zinc-900 truncate mb-1" title={asset.name}>
-          {asset.name}
-        </h3>
-        <div className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">
-          {format(safeToDate(asset.createdAt), 'MMM d, yyyy')}
+      </div>
+      
+      <div className="p-1 flex-1 flex flex-col">
+        <div className="flex items-center gap-1 mb-0.5">
+          <h3 className="text-[7px] font-medium text-zinc-900 truncate leading-tight flex-1">{asset.name}</h3>
         </div>
+        <p className="text-[5px] text-zinc-500 uppercase tracking-wider">
+          {format(safeToDate(asset.createdAt), 'MMM d')} • {(asset.size / 1024).toFixed(0)} KB
+        </p>
       </div>
     </motion.div>
   );
@@ -537,22 +563,22 @@ const RenameModal = ({ isOpen, onClose, onRename, initialName, title }: { isOpen
       {isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-white rounded-[32px] shadow-2xl p-8">
-            <h2 className="text-2xl font-semibold text-zinc-900 mb-6">{title}</h2>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6">
+            <h2 className="text-lg font-semibold text-zinc-900 mb-4">{title}</h2>
             <form onSubmit={handleSubmit}>
               <input 
                 autoFocus
                 type="text" 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-xl text-sm transition-all outline-none mb-6"
+                className="w-full px-3 py-2 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-lg text-xs transition-all outline-none mb-4"
               />
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={onClose} className="px-6 py-2.5 text-zinc-600 font-medium hover:bg-zinc-100 rounded-xl transition-colors">Cancel</button>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={onClose} className="px-4 py-2 text-zinc-600 text-xs font-medium hover:bg-zinc-100 rounded-lg transition-colors">Cancel</button>
                 <button 
                   type="submit" 
                   disabled={isRenaming || !name.trim() || name === initialName}
-                  className="px-6 py-2.5 bg-zinc-900 text-white rounded-xl font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 bg-zinc-900 text-white rounded-lg text-xs font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50"
                 >
                   {isRenaming ? 'Renaming...' : 'Rename'}
                 </button>
@@ -587,9 +613,9 @@ const CreateFolderModal = ({ isOpen, onClose, onCreate, parentFolderName }: { is
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-white rounded-[32px] shadow-2xl p-8">
-            <h2 className="text-2xl font-semibold text-zinc-900 mb-2">New Folder</h2>
-            {parentFolderName && <p className="text-sm text-zinc-500 mb-6">Creating inside: <span className="font-semibold">{parentFolderName}</span></p>}
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6">
+            <h2 className="text-lg font-semibold text-zinc-900 mb-1.5">New Folder</h2>
+            {parentFolderName && <p className="text-[10px] text-zinc-500 mb-4">Creating inside: <span className="font-semibold">{parentFolderName}</span></p>}
             <form onSubmit={handleSubmit}>
               <input 
                 autoFocus
@@ -597,14 +623,14 @@ const CreateFolderModal = ({ isOpen, onClose, onCreate, parentFolderName }: { is
                 placeholder="Folder name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-xl text-sm transition-all outline-none mb-6"
+                className="w-full px-3 py-2 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-lg text-xs transition-all outline-none mb-4"
               />
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={onClose} className="px-6 py-2.5 text-zinc-600 font-medium hover:bg-zinc-100 rounded-xl transition-colors">Cancel</button>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={onClose} className="px-4 py-2 text-zinc-600 text-xs font-medium hover:bg-zinc-100 rounded-lg transition-colors">Cancel</button>
                 <button 
                   type="submit" 
                   disabled={isCreating || !name.trim()}
-                  className="px-6 py-2.5 bg-zinc-900 text-white rounded-xl font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 bg-zinc-900 text-white rounded-lg text-xs font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50"
                 >
                   {isCreating ? 'Creating...' : 'Create Folder'}
                 </button>
@@ -787,28 +813,28 @@ const PreviewModal = ({ asset, onClose }: { asset: Asset | null; onClose: () => 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="relative w-full max-w-4xl bg-white rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-3xl bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
         >
-          <div className="p-6 border-bottom border-zinc-100 flex items-center justify-between bg-white">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-zinc-100 rounded-xl flex items-center justify-center">
-                {asset.type === 'image' ? <ImageIcon size={20} /> : <FileText size={20} />}
+          <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-white">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-zinc-100 rounded-lg flex items-center justify-center">
+                {asset.type === 'image' ? <ImageIcon size={16} /> : <FileText size={16} />}
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-zinc-900 leading-tight">{asset.name}</h2>
-                <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">
+                <h2 className="text-base font-semibold text-zinc-900 leading-tight">{asset.name}</h2>
+                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">
                   {asset.mimeType} • {(asset.size / 1024).toFixed(1)} KB
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={onClose} className="p-2.5 hover:bg-zinc-100 rounded-xl transition-colors text-zinc-600">
-                <X size={20} />
+              <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600">
+                <X size={16} />
               </button>
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto bg-zinc-50 p-8 flex items-center justify-center">
+          <div className="flex-1 overflow-auto bg-zinc-50 p-6 flex items-center justify-center">
             {asset.type === 'image' ? (
               <img 
                 src={asset.content} 
@@ -817,21 +843,21 @@ const PreviewModal = ({ asset, onClose }: { asset: Asset | null; onClose: () => 
                 referrerPolicy="no-referrer"
               />
             ) : isText ? (
-              <div className="w-full max-w-2xl bg-white p-12 rounded-2xl shadow-sm border border-zinc-200 min-h-[400px]">
+              <div className="w-full max-w-xl bg-white p-8 rounded-xl shadow-sm border border-zinc-200 min-h-[300px]">
                 {loadingText ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="animate-spin text-zinc-300" />
                   </div>
                 ) : (
-                  <pre className="whitespace-pre-wrap font-mono text-sm text-zinc-800 leading-relaxed">
+                  <pre className="whitespace-pre-wrap font-mono text-xs text-zinc-800 leading-relaxed">
                     {textContent}
                   </pre>
                 )}
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-4 text-zinc-400">
-                <FileIcon size={64} />
-                <p className="text-zinc-500 font-medium">No preview available for this file type</p>
+              <div className="flex flex-col items-center gap-3 text-zinc-400">
+                <FileIcon size={48} />
+                <p className="text-[10px] text-zinc-500 font-medium">No preview available for this file type</p>
               </div>
             )}
           </div>
@@ -875,30 +901,30 @@ const FolderItem = ({
           setIsOpen(!isOpen);
         }}
         className={cn(
-          "group flex items-center justify-between px-4 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer",
+          "group flex items-center justify-between px-2 py-1 rounded-lg text-[8px] font-medium transition-all cursor-pointer",
           isSelected ? "bg-zinc-900 text-white shadow-md" : "text-zinc-600 hover:bg-zinc-100"
         )}
-        style={{ paddingLeft: `${level * 12 + 16}px` }}
+        style={{ paddingLeft: `${level * 10 + 12}px` }}
       >
-        <div className="flex items-center gap-2 overflow-hidden">
+        <div className="flex items-center gap-1.5 overflow-hidden">
           {subFolders.length > 0 ? (
-            isOpen ? <ChevronDown size={14} className="flex-shrink-0" /> : <ChevronRight size={14} className="flex-shrink-0" />
+            isOpen ? <ChevronDown size={8} className="flex-shrink-0" /> : <ChevronRight size={8} className="flex-shrink-0" />
           ) : (
-            <div className="w-[14px]" />
+            <div className="w-[8px]" />
           )}
-          <FolderIcon size={16} className={isSelected ? "text-white" : "text-zinc-400"} />
+          <FolderIcon size={10} className={isSelected ? "text-white" : "text-zinc-400"} />
           <span className="truncate">{folder.name}</span>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           {isAdmin && (
             <>
               <Edit2 
-                size={14} 
+                size={8} 
                 className="hover:text-zinc-900 transition-colors" 
                 onClick={(e) => onRename(e, folder)}
               />
               <Trash2 
-                size={14} 
+                size={8} 
                 className="hover:text-red-500 transition-colors" 
                 onClick={(e) => onDelete(e, folder.id)}
               />
@@ -949,10 +975,9 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
   const [renameItem, setRenameItem] = useState<{ id: string; name: string; type: 'asset' | 'folder' } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isDraggingGlobal, setIsDraggingGlobal] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [gridSize, setGridSize] = useState(3); // 1 to 5, default 3
+  const [gridSize, setGridSize] = useState(2); // 1 to 5, default 2 (Small)
 
   const handleUpload = async (files: File[]) => {
     const newUploadingFiles = files.map(file => ({
@@ -1114,37 +1139,6 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
     });
   };
 
-  const { getRootProps: getGlobalRootProps, getInputProps: getGlobalInputProps, isDragActive: isGlobalDragActive } = useDropzone({
-    onDrop: (files) => {
-      handleUpload(files);
-      setIsDraggingGlobal(false);
-    },
-    noClick: true,
-    noKeyboard: true,
-    accept: {
-      'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp'],
-      'text/*': ['.txt', '.md', '.csv'],
-      'application/pdf': ['.pdf'],
-      'application/msword': ['.doc'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'application/vnd.ms-excel': ['.xls'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/zip': ['.zip'],
-      'application/x-zip-compressed': ['.zip']
-    }
-  } as any);
-
-  // Global drag state management
-  useEffect(() => {
-    const handleDragEnter = (e: DragEvent) => {
-      if (e.dataTransfer?.types.includes('Files')) {
-        setIsDraggingGlobal(true);
-      }
-    };
-    window.addEventListener('dragenter', handleDragEnter);
-    return () => window.removeEventListener('dragenter', handleDragEnter);
-  }, []);
-
   // Fetch Folders
   useEffect(() => {
     if (isDemo) {
@@ -1152,9 +1146,10 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
       return;
     }
 
+    if (!user) return;
+
     const q = query(
-      collection(db, 'folders'),
-      where('ownerId', '==', user.uid)
+      collection(db, 'folders')
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -1178,9 +1173,11 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
       return;
     }
 
+    if (!user) return;
+
+    // Fetch all assets so everyone can see them
     const q = query(
-      collection(db, 'assets'),
-      where('ownerId', '==', user.uid)
+      collection(db, 'assets')
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -1298,39 +1295,39 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
   return (
     <div className="h-screen flex flex-col bg-[#f5f5f4] text-zinc-900 font-sans overflow-hidden">
       {/* Header */}
-      <header className="bg-white border-b border-zinc-200 px-6 py-4 flex-shrink-0">
-        <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+      <header className="bg-white border-b border-zinc-200 px-6 py-2 flex-shrink-0">
+        <div className="max-w-lg mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
             <div 
-              className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center cursor-pointer"
+              className="w-4 h-4 bg-zinc-900 rounded-lg flex items-center justify-center cursor-pointer"
               onClick={onLoginClick}
             >
-              <Upload className="text-white w-5 h-5" />
+              <Upload className="text-white w-2 h-2" />
             </div>
-            <h1 className="text-xl font-semibold tracking-tight hidden sm:block">AssetHub</h1>
+            <h1 className="text-[10px] font-semibold tracking-tight hidden sm:block">AssetHub</h1>
           </div>
 
           <div className="flex items-center gap-2">
             <div className={cn(
-              "px-3 py-1 rounded-full text-[10px] font-bold border uppercase tracking-widest flex items-center gap-1.5",
+              "px-1.5 py-0.5 rounded-full text-[7px] font-bold border uppercase tracking-widest flex items-center gap-1",
               isAdmin ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"
             )}>
-              {isAdmin ? "Admin Session" : "Public Session"}
+              {isAdmin ? "Admin" : "Public"}
             </div>
           </div>
 
-          <div className="flex-1 max-w-md relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+          <div className="flex-1 max-w-[100px] relative">
+            <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 text-zinc-400" size={7} />
             <input 
               type="text" 
-              placeholder="Search assets..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-xl text-sm transition-all outline-none"
+              className="w-full pl-5 pr-1.5 py-0.5 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-lg text-[8px] transition-all outline-none"
             />
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
             <button 
               onClick={() => {
                 const input = document.createElement('input');
@@ -1342,21 +1339,21 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
                 };
                 input.click();
               }}
-              className="hidden md:flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 transition-all shadow-sm"
+              className="hidden md:flex items-center gap-1 px-1.5 py-0.5 bg-zinc-900 text-white rounded-lg text-[8px] font-medium hover:bg-zinc-800 transition-all shadow-sm"
             >
-              <Plus size={16} />
-              Quick Upload
+              <Plus size={8} />
+              Upload
             </button>
-            <button onClick={() => isDemo ? window.location.reload() : signOut(auth)} className="p-2.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><LogOut size={20} /></button>
-            <div className="flex items-center gap-3 pl-2 border-l border-zinc-200">
+            <button onClick={() => isDemo ? window.location.reload() : signOut(auth)} className="p-0.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><LogOut size={8} /></button>
+            <div className="flex items-center gap-1 pl-1 border-l border-zinc-200">
               <div className="hidden lg:block text-right">
-                <p className="text-xs font-bold text-zinc-900 truncate max-w-[150px]">{user.displayName || (isAdmin ? 'Admin' : 'Guest')}</p>
-                <p className="text-[10px] text-zinc-400 truncate max-w-[150px]">{isAdmin ? user.email : 'Read-only Access'}</p>
+                <p className="text-[7px] font-bold text-zinc-900 truncate max-w-[60px]">{user.displayName || (isAdmin ? 'Admin' : 'Guest')}</p>
+                <p className="text-[5px] text-zinc-400 truncate max-w-[60px]">{isAdmin ? user.email : 'Read-only'}</p>
               </div>
               <img 
                 src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email || 'U'}&background=18181b&color=fff`} 
                 alt={user.displayName || 'User'} 
-                className="w-9 h-9 rounded-full border border-zinc-200 object-cover" 
+                className="w-4 h-4 rounded-full border border-zinc-200 object-cover" 
               />
             </div>
           </div>
@@ -1364,17 +1361,17 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
       </header>
 
       {/* Main Content - Two Column Layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden max-w-lg mx-auto w-full">
         {/* Left Column - Folders */}
-        <aside className="w-80 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0">
-          <div className="p-6 flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-400">Folders</h2>
+        <aside className="w-36 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0">
+          <div className="p-1.5 flex items-center justify-between">
+            <h2 className="text-[6px] font-bold uppercase tracking-widest text-zinc-400">Folders</h2>
             <button 
               onClick={() => setIsFolderModalOpen(true)}
-              className="p-1.5 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
+              className="p-0.5 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
               title="New Folder"
             >
-              <FolderPlus size={18} />
+              <FolderPlus size={8} />
             </button>
           </div>
           
@@ -1382,11 +1379,11 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
             <button 
               onClick={() => setSelectedFolderId(null)}
               className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+                "w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-[8px] font-medium transition-all",
                 !selectedFolderId ? "bg-zinc-900 text-white shadow-md" : "text-zinc-600 hover:bg-zinc-100"
               )}
             >
-              <Grid size={18} />
+              <Grid size={10} />
               Root Assets
             </button>
             
@@ -1410,13 +1407,13 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
             })}
           </nav>
 
-          <div className="p-6 border-t border-zinc-100">
-            <div className="bg-zinc-50 rounded-2xl p-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2">Storage</p>
-              <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+          <div className="p-4 border-t border-zinc-100">
+            <div className="bg-zinc-50 rounded-xl p-3">
+              <p className="text-[8px] font-bold uppercase tracking-widest text-zinc-400 mb-1.5">Storage</p>
+              <div className="h-1 bg-zinc-200 rounded-full overflow-hidden">
                 <div className="h-full bg-zinc-900 w-1/5" />
               </div>
-              <p className="text-[11px] text-zinc-500 mt-2 font-medium">
+              <p className="text-[9px] text-zinc-500 mt-1.5 font-medium truncate">
                 {storage.app.options.storageBucket || 'Not configured'}
               </p>
             </div>
@@ -1424,73 +1421,50 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
         </aside>
 
         {/* Right Column - Assets */}
-        <main 
-          {...getGlobalRootProps()}
-          className="flex-1 flex flex-col bg-[#f5f5f4] overflow-hidden relative"
-        >
-          <input {...getGlobalInputProps()} />
-          
-          <AnimatePresence>
-            {isDraggingGlobal && (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onDragLeave={() => setIsDraggingGlobal(false)}
-                className="absolute inset-0 z-40 bg-zinc-900/80 backdrop-blur-sm flex flex-col items-center justify-center text-white p-12"
-              >
-                <div className="w-24 h-24 bg-white/10 rounded-[40px] flex items-center justify-center mb-6 border border-white/20">
-                  <Upload className="w-10 h-10" />
-                </div>
-                <h2 className="text-3xl font-semibold mb-2">Drop to upload</h2>
-                <p className="text-white/60">Your files will be uploaded to {selectedFolderName}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="p-8 flex-shrink-0 flex items-end justify-between gap-6">
+        <main className="flex-1 flex flex-col bg-[#f5f5f4] overflow-hidden relative">
+          <div className="p-3 flex-shrink-0 flex items-end justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-zinc-400 mb-2">
+              <div className="flex items-center gap-2 text-zinc-400 mb-0.5">
                 {selectedFolderId && (
                   <button onClick={() => setSelectedFolderId(null)} className="hover:text-zinc-900 transition-colors">
-                    <ArrowLeft size={16} />
+                    <ArrowLeft size={8} />
                   </button>
                 )}
-                <span className="text-xs font-bold uppercase tracking-widest">Library</span>
+                <span className="text-[6px] font-bold uppercase tracking-widest">Library</span>
               </div>
-              <h2 className="text-4xl font-semibold tracking-tight text-zinc-900 mb-2">{selectedFolderName}</h2>
-              <p className="text-zinc-500 font-medium">
+              <h2 className="text-sm font-semibold tracking-tight text-zinc-900 mb-0">{selectedFolderName}</h2>
+              <p className="text-[7px] text-zinc-500 font-medium">
                 {filteredAssets.length} {filteredAssets.length === 1 ? 'asset' : 'assets'} in this view
               </p>
             </div>
 
             {/* View Controls */}
-            <div className="flex items-center gap-6">
-              <div className="flex items-center bg-zinc-100 p-1 rounded-xl">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center bg-zinc-100 p-0.5 rounded-lg">
                 <button 
                   onClick={() => setViewMode('grid')}
                   className={cn(
-                    "p-1.5 rounded-lg transition-all",
+                    "p-0.5 rounded-lg transition-all",
                     viewMode === 'grid' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
                   )}
                 >
-                  <Grid size={18} />
+                  <Grid size={10} />
                 </button>
                 <button 
                   onClick={() => setViewMode('list')}
                   className={cn(
-                    "p-1.5 rounded-lg transition-all",
+                    "p-0.5 rounded-lg transition-all",
                     viewMode === 'list' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
                   )}
                 >
-                  <ListIcon size={18} />
+                  <ListIcon size={10} />
                 </button>
               </div>
 
               {viewMode === 'grid' && (
-                <div className="hidden md:flex items-center gap-3">
+                <div className="hidden md:flex items-center gap-2">
                   <button onClick={() => setGridSize(Math.max(1, gridSize - 1))} className="text-zinc-400 hover:text-zinc-600">
-                    <Search size={14} className="scale-90" />
+                    <Search size={10} className="scale-90" />
                   </button>
                   <input 
                     type="range" 
@@ -1499,33 +1473,33 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
                     step="1"
                     value={gridSize}
                     onChange={(e) => setGridSize(parseInt(e.target.value))}
-                    className="w-24 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
+                    className="w-16 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
                   />
                   <button onClick={() => setGridSize(Math.min(5, gridSize + 1))} className="text-zinc-400 hover:text-zinc-600">
-                    <Search size={18} />
+                    <Search size={10} />
                   </button>
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest w-12">
-                    {gridSize === 1 ? 'Tiny' : gridSize === 2 ? 'Small' : gridSize === 3 ? 'Medium' : gridSize === 4 ? 'Large' : 'Huge'}
+                  <span className="text-[7px] font-bold text-zinc-400 uppercase tracking-widest w-8">
+                    {gridSize === 1 ? 'Tiny' : gridSize === 2 ? 'Small' : gridSize === 3 ? 'Med' : gridSize === 4 ? 'Lrg' : 'Huge'}
                   </span>
                 </div>
               )}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
               {isAdmin && (
                 <>
                   <button 
                     onClick={() => setIsFolderModalOpen(true)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-zinc-200 text-zinc-900 rounded-2xl font-medium hover:bg-zinc-50 transition-all"
+                    className="flex items-center justify-center gap-1 px-1.5 py-1 bg-white border border-zinc-200 text-zinc-900 rounded-lg text-[8px] font-medium hover:bg-zinc-50 transition-all"
                   >
-                    <FolderPlus size={20} />
+                    <FolderPlus size={8} />
                     Subfolder
                   </button>
                   <button 
                     onClick={() => setIsUploadModalOpen(true)}
-                    className="flex items-center justify-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-2xl font-medium hover:bg-zinc-800 transition-all shadow-sm hover:shadow-md"
+                    className="flex items-center justify-center gap-1 px-2 py-1 bg-zinc-900 text-white rounded-lg text-[8px] font-medium hover:bg-zinc-800 transition-all shadow-sm hover:shadow-md"
                   >
-                    <Plus size={20} />
+                    <Plus size={8} />
                     Upload
                   </button>
                 </>
