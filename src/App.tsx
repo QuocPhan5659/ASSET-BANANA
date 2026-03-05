@@ -85,6 +85,8 @@ const safeToDate = (date: any): Date => {
   return new Date();
 };
 
+const ADMIN_EMAIL = 'arc.quocphan9999@gmail.com';
+
 // --- Types ---
 interface Folder {
   id: string;
@@ -337,18 +339,24 @@ const AssetCard = ({
   onDelete, 
   onPreview, 
   onRename,
-  viewMode = 'grid'
+  viewMode = 'grid',
+  isAdmin = false
 }: { 
   asset: Asset; 
   onDelete: (asset: Asset) => void | Promise<void>; 
   onPreview: (asset: Asset) => void; 
   onRename: (asset: Asset) => void;
   viewMode?: 'grid' | 'list';
+  isAdmin?: boolean;
 }) => {
   const [isCopying, setIsCopying] = useState(false);
   const isText = asset.type === 'text' || asset.mimeType.includes('text') || asset.name.endsWith('.txt') || asset.name.endsWith('.md');
 
   const handleDragStart = (e: React.DragEvent) => {
+    if (!isAdmin) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('text/plain', asset.content);
     e.dataTransfer.setData('text/uri-list', asset.content);
     e.dataTransfer.effectAllowed = 'copy';
@@ -411,8 +419,12 @@ const AssetCard = ({
               {isCopying ? <Check size={16} /> : <Copy size={16} />}
             </button>
           )}
-          <button onClick={(e) => { e.stopPropagation(); onRename(asset); }} className="p-2 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"><Edit2 size={16} /></button>
-          <button onClick={(e) => { e.stopPropagation(); onDelete(asset); }} className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"><Trash2 size={16} /></button>
+          {isAdmin && (
+            <>
+              <button onClick={(e) => { e.stopPropagation(); onRename(asset); }} className="p-2 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"><Edit2 size={16} /></button>
+              <button onClick={(e) => { e.stopPropagation(); onDelete(asset); }} className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"><Trash2 size={16} /></button>
+            </>
+          )}
         </div>
       </motion.div>
     );
@@ -466,20 +478,24 @@ const AssetCard = ({
               {isCopying ? <Check size={14} /> : <Copy size={14} />}
             </button>
           )}
-          <button 
-            onClick={(e) => { e.stopPropagation(); onRename(asset); }}
-            className="p-1.5 hover:bg-zinc-100 rounded-lg text-zinc-500 hover:text-zinc-900 transition-colors"
-            title="Rename"
-          >
-            <Edit2 size={14} />
-          </button>
-          <button 
-            onClick={(e) => { e.stopPropagation(); onDelete(asset); }}
-            className="p-1.5 hover:bg-red-50 rounded-lg text-zinc-500 hover:text-red-600 transition-colors"
-            title="Delete"
-          >
-            <Trash2 size={14} />
-          </button>
+          {isAdmin && (
+            <>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onRename(asset); }}
+                className="p-1.5 hover:bg-zinc-100 rounded-lg text-zinc-500 hover:text-zinc-900 transition-colors"
+                title="Rename"
+              >
+                <Edit2 size={14} />
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onDelete(asset); }}
+                className="p-1.5 hover:bg-red-50 rounded-lg text-zinc-500 hover:text-red-600 transition-colors"
+                title="Delete"
+              >
+                <Trash2 size={14} />
+              </button>
+            </>
+          )}
           <div className="ml-auto text-[10px] text-zinc-400 font-medium uppercase tracking-wider">
             {(asset.size / 1024).toFixed(1)} KB
           </div>
@@ -786,15 +802,6 @@ const PreviewModal = ({ asset, onClose }: { asset: Asset | null; onClose: () => 
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <a 
-                href={asset.content} 
-                target="_blank"
-                rel="noreferrer"
-                className="p-2.5 hover:bg-zinc-100 rounded-xl transition-colors text-zinc-600"
-                title="Download"
-              >
-                <Download size={20} />
-              </a>
               <button onClick={onClose} className="p-2.5 hover:bg-zinc-100 rounded-xl transition-colors text-zinc-600">
                 <X size={20} />
               </button>
@@ -825,14 +832,6 @@ const PreviewModal = ({ asset, onClose }: { asset: Asset | null; onClose: () => 
               <div className="flex flex-col items-center gap-4 text-zinc-400">
                 <FileIcon size={64} />
                 <p className="text-zinc-500 font-medium">No preview available for this file type</p>
-                <a 
-                  href={asset.content} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="px-6 py-2 bg-zinc-900 text-white rounded-xl text-sm font-medium"
-                >
-                  Download File
-                </a>
               </div>
             )}
           </div>
@@ -849,7 +848,8 @@ const FolderItem = ({
   onSelect, 
   onDelete, 
   onRename,
-  level = 0 
+  level = 0,
+  isAdmin = false
 }: { 
   folder: Folder; 
   folders: Folder[]; 
@@ -858,6 +858,7 @@ const FolderItem = ({
   onDelete: (e: React.MouseEvent, id: string) => void;
   onRename: (e: React.MouseEvent, folder: Folder) => void;
   level?: number;
+  isAdmin?: boolean;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const subFolders = folders
@@ -889,16 +890,20 @@ const FolderItem = ({
           <span className="truncate">{folder.name}</span>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <Edit2 
-            size={14} 
-            className="hover:text-zinc-900 transition-colors" 
-            onClick={(e) => onRename(e, folder)}
-          />
-          <Trash2 
-            size={14} 
-            className="hover:text-red-500 transition-colors" 
-            onClick={(e) => onDelete(e, folder.id)}
-          />
+          {isAdmin && (
+            <>
+              <Edit2 
+                size={14} 
+                className="hover:text-zinc-900 transition-colors" 
+                onClick={(e) => onRename(e, folder)}
+              />
+              <Trash2 
+                size={14} 
+                className="hover:text-red-500 transition-colors" 
+                onClick={(e) => onDelete(e, folder.id)}
+              />
+            </>
+          )}
         </div>
       </div>
       
@@ -916,6 +921,7 @@ const FolderItem = ({
                 onDelete={onDelete}
                 onRename={onRename}
                 level={level + 1}
+                isAdmin={isAdmin}
               />
             );
           })}
@@ -933,7 +939,7 @@ interface UploadingFile {
   error?: string;
 }
 
-const Dashboard = ({ user, isDemo = false }: { user: User | { uid: string; photoURL?: string; displayName?: string; email?: string }; isDemo?: boolean }) => {
+const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { user: User | { uid: string; photoURL?: string; displayName?: string; email?: string }; isDemo?: boolean; isAdmin?: boolean; onLoginClick?: () => void }) => {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -1295,7 +1301,10 @@ const Dashboard = ({ user, isDemo = false }: { user: User | { uid: string; photo
       <header className="bg-white border-b border-zinc-200 px-6 py-4 flex-shrink-0">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center">
+            <div 
+              className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center cursor-pointer"
+              onClick={onLoginClick}
+            >
               <Upload className="text-white w-5 h-5" />
             </div>
             <h1 className="text-xl font-semibold tracking-tight hidden sm:block">AssetHub</h1>
@@ -1304,9 +1313,9 @@ const Dashboard = ({ user, isDemo = false }: { user: User | { uid: string; photo
           <div className="flex items-center gap-2">
             <div className={cn(
               "px-3 py-1 rounded-full text-[10px] font-bold border uppercase tracking-widest flex items-center gap-1.5",
-              isDemo ? "bg-zinc-100 text-zinc-500 border-zinc-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"
+              isAdmin ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"
             )}>
-              {isDemo ? "Public Session" : "Cloud Mode"}
+              {isAdmin ? "Admin Session" : "Public Session"}
             </div>
           </div>
 
@@ -1341,8 +1350,8 @@ const Dashboard = ({ user, isDemo = false }: { user: User | { uid: string; photo
             <button onClick={() => isDemo ? window.location.reload() : signOut(auth)} className="p-2.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><LogOut size={20} /></button>
             <div className="flex items-center gap-3 pl-2 border-l border-zinc-200">
               <div className="hidden lg:block text-right">
-                <p className="text-xs font-bold text-zinc-900 truncate max-w-[150px]">{user.displayName || 'Guest'}</p>
-                <p className="text-[10px] text-zinc-400 truncate max-w-[150px]">{isDemo ? 'Local Storage' : user.email}</p>
+                <p className="text-xs font-bold text-zinc-900 truncate max-w-[150px]">{user.displayName || (isAdmin ? 'Admin' : 'Guest')}</p>
+                <p className="text-[10px] text-zinc-400 truncate max-w-[150px]">{isAdmin ? user.email : 'Read-only Access'}</p>
               </div>
               <img 
                 src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email || 'U'}&background=18181b&color=fff`} 
@@ -1395,6 +1404,7 @@ const Dashboard = ({ user, isDemo = false }: { user: User | { uid: string; photo
                     e.stopPropagation();
                     setRenameItem({ id: f.id, name: f.name, type: 'folder' });
                   }}
+                  isAdmin={isAdmin}
                 />
               );
             })}
@@ -1502,20 +1512,24 @@ const Dashboard = ({ user, isDemo = false }: { user: User | { uid: string; photo
             </div>
 
             <div className="flex items-center gap-3">
-              <button 
-                onClick={() => setIsFolderModalOpen(true)}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-zinc-200 text-zinc-900 rounded-2xl font-medium hover:bg-zinc-50 transition-all"
-              >
-                <FolderPlus size={20} />
-                Subfolder
-              </button>
-              <button 
-                onClick={() => setIsUploadModalOpen(true)}
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-2xl font-medium hover:bg-zinc-800 transition-all shadow-sm hover:shadow-md"
-              >
-                <Plus size={20} />
-                Upload
-              </button>
+              {isAdmin && (
+                <>
+                  <button 
+                    onClick={() => setIsFolderModalOpen(true)}
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-zinc-200 text-zinc-900 rounded-2xl font-medium hover:bg-zinc-50 transition-all"
+                  >
+                    <FolderPlus size={20} />
+                    Subfolder
+                  </button>
+                  <button 
+                    onClick={() => setIsUploadModalOpen(true)}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-2xl font-medium hover:bg-zinc-800 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus size={20} />
+                    Upload
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -1585,6 +1599,7 @@ const Dashboard = ({ user, isDemo = false }: { user: User | { uid: string; photo
                         onDelete={handleDelete}
                         onPreview={setPreviewAsset}
                         onRename={(a: Asset) => setRenameItem({ id: a.id, name: a.name, type: 'asset' })}
+                        isAdmin={isAdmin}
                       />
                     );
                   })}
@@ -1641,16 +1656,20 @@ export default function App() {
   });
   const [loading, setLoading] = useState(false);
   const [isDemo, setIsDemo] = useState(true);
+  const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
         setIsDemo(false);
+        setShowLogin(false);
       }
     });
     return () => unsubscribe();
   }, []);
+
+  const isAdmin = !isDemo && user?.email === ADMIN_EMAIL;
 
   if (loading) {
     return (
@@ -1660,5 +1679,9 @@ export default function App() {
     );
   }
 
-  return <Dashboard user={user!} isDemo={isDemo} />;
+  if (showLogin) {
+    return <Login onDemoMode={() => setShowLogin(false)} />;
+  }
+
+  return <Dashboard user={user!} isDemo={isDemo} isAdmin={isAdmin} onLoginClick={() => setShowLogin(true)} />;
 }
