@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "Folder": {
+      "title": "Folder",
+      "description": "A folder to organize assets.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the folder." },
+        "ownerId": { "type": "string", "description": "The UID of the user who owns the folder." },
+        "parentId": { "type": "string", "description": "The ID of the parent folder (optional)." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the folder was created." }
+      },
+      "required": ["name", "ownerId", "createdAt"]
+    },
+    "Asset": {
+      "title": "Asset",
+      "description": "A file asset uploaded by a user.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The original filename." },
+        "type": { "type": "string", "enum": ["image", "text"], "description": "The category of the asset." },
+        "content": { "type": "string", "description": "Base64 data for images or raw text for text files." },
+        "size": { "type": "number", "description": "File size in bytes." },
+        "mimeType": { "type": "string", "description": "The IANA mime type." },
+        "ownerId": { "type": "string", "description": "The UID of the user who uploaded the asset." },
+        "folderId": { "type": "string", "description": "The ID of the folder this asset belongs to (optional)." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the asset was uploaded." }
+      },
+      "required": ["name", "type", "content", "ownerId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "folders/{folderId}": {
+      "schema": "Folder",
+      "description": "Collection of user folders."
+    },
+    "assets/{assetId}": {
+      "schema": "Asset",
+      "description": "Collection of uploaded assets."
+    }
+  }
+}
