@@ -412,6 +412,32 @@ const AssetCard = ({
         </div>
         
         <div className="flex items-center gap-1">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(`${window.location.origin}${asset.content}`);
+              // Use a subtle notification instead of alert if possible, but alert is fine for now
+              const btn = e.currentTarget;
+              const originalColor = btn.style.color;
+              btn.style.color = '#10b981';
+              setTimeout(() => btn.style.color = originalColor, 2000);
+            }}
+            className="p-1 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"
+            title="Copy Link"
+          >
+            <Copy size={10} />
+          </button>
+          <a 
+            href={asset.content} 
+            download={asset.name}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"
+            title="Download"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Download size={10} />
+          </a>
           {isText && (
             <button 
               onClick={handleCopyContent} 
@@ -480,6 +506,35 @@ const AssetCard = ({
         )}
         
         <div className="absolute top-1 right-1 flex flex-col gap-0.5">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(`${window.location.origin}${asset.content}`);
+              const btn = e.currentTarget;
+              const originalBg = btn.style.backgroundColor;
+              btn.style.backgroundColor = '#10b981';
+              btn.style.color = 'white';
+              setTimeout(() => {
+                btn.style.backgroundColor = originalBg;
+                btn.style.color = '';
+              }, 2000);
+            }}
+            className="p-1 rounded-md shadow-sm backdrop-blur-md bg-white/80 hover:bg-white text-zinc-600 transition-colors"
+            title="Copy Link"
+          >
+            <Copy size={10} />
+          </button>
+          <a 
+            href={asset.content} 
+            download={asset.name}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1 rounded-md shadow-sm backdrop-blur-md bg-white/80 hover:bg-white text-zinc-600 transition-colors"
+            title="Download"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Download size={10} />
+          </a>
           {isText && (
             <button 
               onClick={handleCopyContent} 
@@ -1728,6 +1783,12 @@ export default function App() {
         setUser(firebaseUser);
         setIsDemo(false);
         setShowLogin(false);
+      } else {
+        setUser({ 
+          uid: 'public_user', 
+          email: 'public@assethub.local', 
+          displayName: 'Public Guest' 
+        });
       }
     });
     return () => unsubscribe();
