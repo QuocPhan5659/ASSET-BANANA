@@ -3,13 +3,7 @@ import {
   auth, 
 } from './firebase';
 import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
   User, 
-  signOut,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { 
   Timestamp,
@@ -66,7 +60,7 @@ const safeToDate = (date: any): Date => {
   return new Date();
 };
 
-const ADMIN_EMAILS = ['arc.quocphan9999@gmail.com', 'vi.quocphan.tk@gmail.com'];
+const ADMIN_PASSWORD = 'qvp5659QuocViPhan1234';
 
 // --- Types ---
 interface Folder {
@@ -92,54 +86,25 @@ interface Asset {
 
 // --- Components ---
 
-const Login = ({ onDemoMode }: { onDemoMode: () => void }) => {
+const Login = ({ onLogin, onDemoMode }: { onLogin: (password: string) => void; onDemoMode: () => void }) => {
   const [error, setError] = useState<string | null>(null);
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleGoogleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      setIsLoading(true);
-      setError(null);
-      await signInWithPopup(auth, provider);
-    } catch (error: any) {
-      console.error("Login failed", error);
-      if (error.code === 'auth/unauthorized-domain') {
-        setError("unauthorized-domain");
-      } else if (error.code === 'auth/operation-not-allowed') {
-        setError("Google sign-in is not enabled. Please enable it in your Firebase Console (Authentication > Sign-in method).");
-      } else {
-        setError(error.message || "An error occurred during login.");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     setIsLoading(true);
-
-    try {
-      if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email, password);
+    setError(null);
+    
+    // Artificial delay for feel
+    setTimeout(() => {
+      if (password === ADMIN_PASSWORD) {
+        onLogin(password);
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        setError("Mật khẩu không chính xác. Vui lòng thử lại.");
       }
-    } catch (error: any) {
-      console.error("Email auth failed", error);
-      if (error.code === 'auth/unauthorized-domain') {
-        setError("unauthorized-domain");
-      } else if (error.code === 'auth/operation-not-allowed') {
-        setError(error.message || "Authentication failed.");
-      }
-    } finally {
       setIsLoading(false);
-    }
+    }, 500);
   };
 
   return (
@@ -153,115 +118,25 @@ const Login = ({ onDemoMode }: { onDemoMode: () => void }) => {
           <Upload className="text-white w-8 h-8" />
         </div>
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 mb-3">AssetHub</h1>
-        <p className="text-zinc-500 mb-8">Manage and organize your digital assets in one place.</p>
+        <p className="text-zinc-500 mb-8">Nhập mật khẩu quản trị để tiếp tục.</p>
         
-        {error === 'unauthorized-domain' ? (
-          <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-[32px] text-left animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center shrink-0">
-                <AlertCircle className="text-amber-600" size={20} />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-bold text-amber-900 mb-1">Domain Not Whitelisted</h3>
-                <p className="text-xs text-amber-800 leading-relaxed mb-4">
-                  Firebase security is blocking this domain. You can fix this in your console, or bypass it now to continue.
-                </p>
-                
-                <div className="space-y-2">
-                  <button 
-                    onClick={onDemoMode}
-                    className="w-full py-4 bg-zinc-900 text-white text-xs font-bold uppercase tracking-widest rounded-2xl hover:bg-zinc-800 transition-all shadow-lg flex items-center justify-center gap-2"
-                  >
-                    Bypass & Enter Now (Demo)
-                  </button>
-                  
-                  <button 
-                    onClick={() => setError('unauthorized-domain-details')}
-                    className="w-full py-3 bg-white border border-amber-200 text-amber-700 text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-amber-100/50 transition-all"
-                  >
-                    Show Instructions to Fix Cloud Login
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : error === 'unauthorized-domain-details' ? (
-          <div className="mb-8 p-6 bg-zinc-50 border border-zinc-200 rounded-[32px] text-left">
-            <h3 className="text-sm font-bold text-zinc-900 mb-4 flex items-center gap-2">
-              <button onClick={() => setError('unauthorized-domain')} className="p-1 hover:bg-zinc-200 rounded-lg transition-colors">
-                <ArrowLeft size={14} />
-              </button>
-              How to fix Cloud Login
-            </h3>
-            
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">1. Copy this domain</p>
-                <div className="flex items-center justify-between gap-2 bg-white p-2 rounded-xl border border-zinc-200">
-                  <code className="text-[10px] text-zinc-900 truncate font-mono font-bold">{window.location.hostname}</code>
-                  <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText(window.location.hostname);
-                      alert('Domain copied!');
-                    }}
-                    className="p-1.5 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors"
-                  >
-                    <Copy size={12} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">2. Add to Firebase</p>
-                <a 
-                  href={`https://console.firebase.google.com/project/gen-lang-client-0324813943/authentication/settings`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-3 bg-white border border-zinc-200 text-zinc-900 text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-zinc-50 transition-all shadow-sm"
-                >
-                  Open "Authorized Domains" <ChevronRight size={12} />
-                </a>
-              </div>
-            </div>
-          </div>
-        ) : error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl text-left">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-red-600 mb-1">Configuration Required</p>
-                <p className="text-xs text-red-500 leading-relaxed">{error}</p>
-                <button 
-                  onClick={onDemoMode}
-                  className="mt-4 text-[10px] font-bold uppercase tracking-widest text-zinc-900 hover:underline flex items-center gap-1"
-                >
-                  Skip and use Demo Mode instead <ChevronRight size={10} />
-                </button>
-              </div>
-            </div>
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl text-left flex items-start gap-3">
+            <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
+            <p className="text-xs text-red-600 font-medium">{error}</p>
           </div>
         )}
 
-        <form onSubmit={handleEmailAuth} className="space-y-4 mb-8">
-          <div className="relative">
-            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-            <input 
-              type="email" 
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm outline-none focus:border-zinc-900 transition-all"
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-4 mb-8">
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
             <input 
               type="password" 
-              placeholder="Password"
+              placeholder="Nhập mật khẩu"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoFocus
               className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm outline-none focus:border-zinc-900 transition-all"
             />
           </div>
@@ -270,7 +145,7 @@ const Login = ({ onDemoMode }: { onDemoMode: () => void }) => {
             disabled={isLoading}
             className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-medium hover:bg-zinc-800 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
           >
-            {isLoading ? <Loader2 className="animate-spin" size={20} /> : (isSignUp ? "Create Account" : "Sign In")}
+            {isLoading ? <Loader2 className="animate-spin" size={20} /> : "Đăng nhập Quản trị"}
           </button>
         </form>
 
@@ -279,37 +154,17 @@ const Login = ({ onDemoMode }: { onDemoMode: () => void }) => {
             <div className="w-full border-t border-zinc-200"></div>
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-4 text-zinc-400 font-bold tracking-widest">Or continue with</span>
+            <span className="bg-white px-4 text-zinc-400 font-bold tracking-widest">Hoặc</span>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-8">
-          <button 
-            onClick={handleGoogleLogin}
-            disabled={isLoading}
-            className="py-4 bg-white border border-zinc-200 text-zinc-900 rounded-2xl font-medium hover:bg-zinc-50 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-            Google
-          </button>
-          <button 
-            onClick={onDemoMode}
-            disabled={isLoading}
-            className="py-4 bg-zinc-100 text-zinc-900 rounded-2xl font-medium hover:bg-zinc-200 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-          >
-            Demo Mode
-          </button>
-        </div>
-
-        <p className="mt-8 text-sm text-zinc-500">
-          {isSignUp ? "Already have an account?" : "Don't have an account?"}
-          <button 
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="ml-2 text-zinc-900 font-semibold hover:underline"
-          >
-            {isSignUp ? "Sign In" : "Sign Up"}
-          </button>
-        </p>
+        <button 
+          onClick={onDemoMode}
+          disabled={isLoading}
+          className="w-full py-4 bg-zinc-100 text-zinc-900 rounded-2xl font-medium hover:bg-zinc-200 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+        >
+          Tiếp tục với tư cách Khách
+        </button>
       </motion.div>
     </div>
   );
@@ -1067,7 +922,7 @@ interface UploadingFile {
   error?: string;
 }
 
-const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { user: User | { uid: string; photoURL?: string; displayName?: string; email?: string }; isDemo?: boolean; isAdmin?: boolean; onLoginClick?: () => void }) => {
+const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogout }: { user: User | { uid: string; photoURL?: string; displayName?: string; email?: string }; isDemo?: boolean; isAdmin?: boolean; onLoginClick?: () => void; onLogout?: () => void }) => {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -1149,7 +1004,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
           
           const uploadResult = await response.json();
           contentUrl = uploadResult.url;
-          storagePath = `uploads/${uploadResult.filename}`;
+          storagePath = uploadResult.isCloudinary ? `cloudinary/${uploadResult.filename}` : `uploads/${uploadResult.filename}`;
         }
 
         // 3. Metadata step (90-100%)
@@ -1465,7 +1320,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
               </button>
             )}
             {user.uid !== 'public_user' ? (
-              <button onClick={() => isDemo ? window.location.reload() : signOut(auth)} className="p-0.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Logout">
+              <button onClick={() => onLogout?.()} className="p-0.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Logout">
                 <LogOut size={12} />
               </button>
             ) : (
@@ -1768,33 +1623,45 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
 };
 
 export default function App() {
-  const [user, setUser] = useState<User | { uid: string; email?: string; displayName?: string } | null>({ 
-    uid: 'public_user', 
-    email: 'public@assethub.local', 
-    displayName: 'Public Guest' 
+  const [user, setUser] = useState<User | { uid: string; email?: string; displayName?: string } | null>(() => {
+    const saved = localStorage.getItem('assethub_user');
+    if (saved) return JSON.parse(saved);
+    return { 
+      uid: 'public_user', 
+      email: 'public@assethub.local', 
+      displayName: 'Public Guest' 
+    };
   });
   const [loading, setLoading] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        setIsDemo(false);
-        setShowLogin(false);
-      } else {
-        setUser({ 
-          uid: 'public_user', 
-          email: 'public@assethub.local', 
-          displayName: 'Public Guest' 
-        });
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+  const handleLogin = (password: string) => {
+    if (password === ADMIN_PASSWORD) {
+      const adminUser = {
+        uid: 'admin_user',
+        email: 'admin@assethub.local',
+        displayName: 'Administrator'
+      };
+      setUser(adminUser);
+      localStorage.setItem('assethub_user', JSON.stringify(adminUser));
+      setIsDemo(false);
+      setShowLogin(false);
+    }
+  };
 
-  const isAdmin = !isDemo && user?.email && ADMIN_EMAILS.includes(user.email);
+  const handleLogout = () => {
+    const guestUser = { 
+      uid: 'public_user', 
+      email: 'public@assethub.local', 
+      displayName: 'Public Guest' 
+    };
+    setUser(guestUser);
+    localStorage.removeItem('assethub_user');
+    setIsDemo(false);
+  };
+
+  const isAdmin = !isDemo && user?.uid === 'admin_user';
 
   if (loading) {
     return (
@@ -1805,8 +1672,8 @@ export default function App() {
   }
 
   if (showLogin) {
-    return <Login onDemoMode={() => setShowLogin(false)} />;
+    return <Login onLogin={handleLogin} onDemoMode={() => setShowLogin(false)} />;
   }
 
-  return <Dashboard user={user!} isDemo={isDemo} isAdmin={isAdmin} onLoginClick={() => setShowLogin(true)} />;
+  return <Dashboard user={user!} isDemo={isDemo} isAdmin={isAdmin} onLoginClick={() => setShowLogin(true)} onLogout={handleLogout} />;
 }

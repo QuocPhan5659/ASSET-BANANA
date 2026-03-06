@@ -7,6 +7,8 @@ import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import { v2 as cloudinary } from "cloudinary";
+import streamifier from "streamifier";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +47,24 @@ async function startServer() {
   const io = new Server(httpServer);
   const PORT = 3000;
 
+  // Configure Cloudinary
+  const isCloudinaryConfigured = !!(
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
+  );
+
+  if (isCloudinaryConfigured) {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+    console.log("Cloudinary configured for permanent storage.");
+  } else {
+    console.warn("Cloudinary not configured. Falling back to local storage (temporary).");
+  }
+
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);
   });
@@ -72,6 +92,7 @@ async function startServer() {
   });
 
   const upload = multer({ storage: storage });
+  const memoryUpload = multer({ storage: multer.memoryStorage() });
 
   app.use(express.json());
 
@@ -110,16 +131,44 @@ async function startServer() {
     res.json(assets);
   });
 
-  app.post("/api/upload", upload.single("file"), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    
-    const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({
-      url: fileUrl,
-      filename: req.file.filename,
-      size: req.file.size,
-      mimetype: req.file.mimetype
-    });
+  app.post("/api/upload", (req, res, next) => {
+    if (isCloudinaryConfigured) {
+      memoryUpload.single("file")(req, res, (err) => {
+        if (err) return next(err);
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const uploadStream = cloudinary.uploader.upload_stream(
+          { folder: "assethub" },
+          (error, result) => {
+            if (error) return res.status(500).json({ error: "Cloudinary upload failed" });
+            if (!result) return res.status(500).json({ error: "No result from Cloudinary" });
+            
+            res.json({
+              url: result.secure_url,
+              filename: result.public_id,
+              size: result.bytes,
+              mimetype: req.file!.mimetype,
+              isCloudinary: true
+            });
+          }
+        );
+        streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+      });
+    } else {
+      upload.single("file")(req, res, (err) => {
+        if (err) return next(err);
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        
+        const fileUrl = `/uploads/${req.file.filename}`;
+        res.json({
+          url: fileUrl,
+          filename: req.file.filename,
+          size: req.file.size,
+          mimetype: req.file.mimetype,
+          isCloudinary: false
+        });
+      });
+    }
   });
 
   app.post("/api/assets", (req, res) => {
@@ -141,9 +190,16 @@ async function startServer() {
 
   app.delete("/api/assets/:id", (req, res) => {
     const asset = db.prepare("SELECT storagePath FROM assets WHERE id = ?").get(req.params.id) as any;
-    if (asset && asset.storagePath && asset.storagePath.startsWith("uploads/")) {
-      const filePath = path.join(__dirname, asset.storagePath);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (asset && asset.storagePath) {
+      if (asset.storagePath.startsWith("uploads/")) {
+        const filePath = path.join(__dirname, asset.storagePath);
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } else if (asset.storagePath.startsWith("cloudinary/")) {
+        const publicId = asset.storagePath.replace("cloudinary/", "");
+        if (isCloudinaryConfigured) {
+          cloudinary.uploader.destroy(publicId).catch(err => console.error("Cloudinary delete failed:", err));
+        }
+      }
     }
     db.prepare("DELETE FROM assets WHERE id = ?").run(req.params.id);
     broadcastUpdate();
