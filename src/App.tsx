@@ -15,6 +15,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { localService } from './services/localService';
+import { io } from 'socket.io-client';
 import { 
   Upload, 
   FileText, 
@@ -1167,9 +1168,15 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
     };
 
     fetchFolders();
-    // Refresh every 5 seconds for "real-time" feel without Firebase
-    const interval = setInterval(fetchFolders, 5000);
-    return () => clearInterval(interval);
+    
+    if (!isDemo) {
+      const socket = io();
+      socket.on("data:updated", fetchFolders);
+      return () => {
+        socket.off("data:updated", fetchFolders);
+        socket.disconnect();
+      };
+    }
   }, [user?.uid, isDemo]);
 
   // Fetch Assets
@@ -1195,8 +1202,15 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick }: { us
     };
 
     fetchAssets();
-    const interval = setInterval(fetchAssets, 5000);
-    return () => clearInterval(interval);
+    
+    if (!isDemo) {
+      const socket = io();
+      socket.on("data:updated", fetchAssets);
+      return () => {
+        socket.off("data:updated", fetchAssets);
+        socket.disconnect();
+      };
+    }
   }, [user?.uid, isDemo]);
 
   useEffect(() => {
