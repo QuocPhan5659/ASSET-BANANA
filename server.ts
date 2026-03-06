@@ -5,6 +5,8 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
+import { createServer } from "http";
+import { Server } from "socket.io";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,7 +41,17 @@ db.exec(`
 
 async function startServer() {
   const app = express();
+  const httpServer = createServer(app);
+  const io = new Server(httpServer);
   const PORT = 3000;
+
+  io.on("connection", (socket) => {
+    console.log("Client connected:", socket.id);
+  });
+
+  const broadcastUpdate = () => {
+    io.emit("data:updated");
+  };
 
   // Ensure uploads directory exists
   const uploadDir = path.join(__dirname, "uploads");
@@ -74,17 +86,20 @@ async function startServer() {
     const { id, name, ownerId, parentId } = req.body;
     db.prepare("INSERT INTO folders (id, name, ownerId, parentId) VALUES (?, ?, ?, ?)")
       .run(id, name, ownerId, parentId);
+    broadcastUpdate();
     res.json({ success: true });
   });
 
   app.patch("/api/folders/:id", (req, res) => {
     const { name } = req.body;
     db.prepare("UPDATE folders SET name = ? WHERE id = ?").run(name, req.params.id);
+    broadcastUpdate();
     res.json({ success: true });
   });
 
   app.delete("/api/folders/:id", (req, res) => {
     db.prepare("DELETE FROM folders WHERE id = ?").run(req.params.id);
+    broadcastUpdate();
     res.json({ success: true });
   });
 
@@ -113,12 +128,14 @@ async function startServer() {
       INSERT INTO assets (id, name, type, content, storagePath, size, mimeType, ownerId, folderId)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, name, type, content, storagePath, size, mimeType, ownerId, folderId);
+    broadcastUpdate();
     res.json({ success: true });
   });
 
   app.patch("/api/assets/:id", (req, res) => {
     const { name } = req.body;
     db.prepare("UPDATE assets SET name = ? WHERE id = ?").run(name, req.params.id);
+    broadcastUpdate();
     res.json({ success: true });
   });
 
@@ -129,6 +146,7 @@ async function startServer() {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
     db.prepare("DELETE FROM assets WHERE id = ?").run(req.params.id);
+    broadcastUpdate();
     res.json({ success: true });
   });
 
@@ -147,7 +165,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
