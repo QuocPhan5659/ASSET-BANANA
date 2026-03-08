@@ -5,8 +5,13 @@ const FOLDERS_KEY = 'assethub_folders';
 
 export const localService = {
   getAssets: (): Asset[] => {
-    const data = localStorage.getItem(ASSETS_KEY);
-    return data ? JSON.parse(data) : [];
+    try {
+      const data = localStorage.getItem(ASSETS_KEY);
+      if (data && data !== 'undefined') return JSON.parse(data);
+    } catch (e) {
+      console.error("Failed to parse assets from localStorage", e);
+    }
+    return [];
   },
   
   saveAssets: (assets: Asset[]) => {
@@ -14,8 +19,13 @@ export const localService = {
   },
   
   getFolders: (): Folder[] => {
-    const data = localStorage.getItem(FOLDERS_KEY);
-    return data ? JSON.parse(data) : [];
+    try {
+      const data = localStorage.getItem(FOLDERS_KEY);
+      if (data && data !== 'undefined') return JSON.parse(data);
+    } catch (e) {
+      console.error("Failed to parse folders from localStorage", e);
+    }
+    return [];
   },
   
   saveFolders: (folders: Folder[]) => {

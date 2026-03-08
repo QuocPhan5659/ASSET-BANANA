@@ -279,23 +279,53 @@ const AssetCard = ({
       if (asset.content.startsWith('http')) {
         if (isStaticEnv()) {
           // In static mode, try direct fetch first
-          try {
-            // Handle Google Drive links conversion for fetching
-            let fetchUrl = asset.content;
-            if (asset.content.includes('drive.google.com')) {
-              const match = asset.content.match(/\/file\/d\/([^\/]+)/) || asset.content.match(/id=([^\&]+)/);
-              if (match && match[1]) {
-                fetchUrl = `https://drive.google.com/uc?export=download&id=${match[1]}`;
+            try {
+              // Handle Google Drive links conversion for fetching
+              let fetchUrl = asset.content;
+              if (asset.content.includes('drive.google.com')) {
+                const match = asset.content.match(/\/file\/d\/([^\/]+)/) || asset.content.match(/id=([^\&]+)/);
+                if (match && match[1]) {
+                  const fileId = match[1];
+                  // Try direct fetch first
+                  try {
+                    const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+                    const res = await fetch(directUrl);
+                    if (res.ok) {
+                      text = await res.text();
+                    } else {
+                      throw new Error('Direct fetch failed');
+                    }
+                  } catch (e) {
+                    // Fallback to Script proxy
+                    if (GOOGLE_SCRIPT_URL) {
+                      const proxyRes = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'cors',
+                        body: JSON.stringify({ action: "getFileContent", fileId }),
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                      });
+                      const proxyData = await proxyRes.json();
+                      if (proxyData.success && proxyData.content) {
+                        text = proxyData.content;
+                      } else {
+                        text = asset.content;
+                      }
+                    } else {
+                      text = asset.content;
+                    }
+                  }
+                } else {
+                  text = asset.content;
+                }
+              } else {
+                const response = await fetch(fetchUrl);
+                if (!response.ok) throw new Error('CORS or Network error');
+                text = await response.text();
               }
+            } catch (e) {
+              console.log("Fetch failed, copying URL as fallback");
+              text = asset.content;
             }
-            
-            const response = await fetch(fetchUrl);
-            if (!response.ok) throw new Error('CORS or Network error');
-            text = await response.text();
-          } catch (e) {
-            console.log("Direct fetch failed, copying URL as fallback");
-            text = asset.content;
-          }
         } else {
           const response = await fetch(`/api/proxy-content?url=${encodeURIComponent(asset.content)}`);
           if (!response.ok) throw new Error('Failed to fetch via proxy');
@@ -796,46 +826,115 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
   useEffect(() => {
     if (asset && asset.type === 'text') {
       setLoadingText(true);
+      setTextContent(null);
       
-      let fetchUrl = asset.content;
-      if (asset.content.startsWith('http')) {
-        if (isStaticEnv()) {
-          // Handle Google Drive links conversion for fetching in static mode
-          if (asset.content.includes('drive.google.com')) {
-            const match = asset.content.match(/\/file\/d\/([^\/]+)/) || asset.content.match(/id=([^\&]+)/);
-            if (match && match[1]) {
-              fetchUrl = `https://drive.google.com/uc?export=download&id=${match[1]}`;
+      const fetchText = async () => {
+        try {
+          let fetchUrl = asset.content;
+          
+          // If it's a DataURL, we can try to decode it directly first for speed
+          if (asset.content.startsWith('data:')) {
+            try {
+              const response = await fetch(asset.content);
+              const text = await response.text();
+              setTextContent(text);
+              setLoadingText(false);
+              return;
+            } catch (e) {
+              console.warn("Failed to fetch DataURL directly, falling back to manual decode");
+              const parts = asset.content.split(',');
+              const base64Content = parts[1];
+              if (base64Content && parts[0].includes('base64')) {
+                let decoded = atob(base64Content);
+                try { decoded = decodeURIComponent(escape(decoded)); } catch(e) {}
+                setTextContent(decoded);
+              } else {
+                setTextContent(decodeURIComponent(base64Content || ''));
+              }
+              setLoadingText(false);
+              return;
             }
           }
-        } else {
-          fetchUrl = `/api/proxy-content?url=${encodeURIComponent(asset.content)}`;
-        }
-      }
-        
-      fetch(fetchUrl)
-        .then(res => res.text())
-        .then(text => {
-          // If it's a DataURL, we might need to decode it if the browser didn't do it
-          if (text.startsWith('data:')) {
-             const parts = text.split(',');
-             const base64Content = parts[1];
-             if (base64Content && parts[0].includes('base64')) {
-               try {
-                 let decoded = atob(base64Content);
-                 try { decoded = decodeURIComponent(escape(decoded)); } catch(e) {}
-                 setTextContent(decoded);
-               } catch(e) { setTextContent(text); }
-             } else {
-               setTextContent(text);
-             }
-          } else {
-            setTextContent(text);
+
+          if (asset.content.startsWith('http')) {
+            if (isStaticEnv()) {
+              // Handle Google Drive links conversion for fetching in static mode
+              if (asset.content.includes('drive.google.com')) {
+                const match = asset.content.match(/\/file\/d\/([^\/]+)/) || asset.content.match(/id=([^\&]+)/);
+                if (match && match[1]) {
+                  const fileId = match[1];
+                  // Try direct fetch first
+                  try {
+                    const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+                    const res = await fetch(directUrl);
+                    if (res.ok) {
+                      const text = await res.text();
+                      setTextContent(text);
+                      setLoadingText(false);
+                      return;
+                    }
+                  } catch (e) {
+                    console.log("Direct Drive fetch failed, trying via Script proxy...");
+                  }
+
+                  // Fallback to Script proxy if available
+                  if (GOOGLE_SCRIPT_URL) {
+                    try {
+                      const proxyRes = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'cors',
+                        body: JSON.stringify({ action: "getFileContent", fileId }),
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                      });
+                      const proxyData = await proxyRes.json();
+                      if (proxyData.success && proxyData.content) {
+                        setTextContent(proxyData.content);
+                        setLoadingText(false);
+                        return;
+                      }
+                    } catch (e) {
+                      console.error("Script proxy fetch failed:", e);
+                    }
+                  }
+                }
+              }
+              
+              // Generic direct fetch for other URLs
+              try {
+                const res = await fetch(asset.content);
+                if (res.ok) {
+                  const text = await res.text();
+                  setTextContent(text);
+                  setLoadingText(false);
+                  return;
+                }
+              } catch (e) {
+                console.warn("Generic fetch failed for", asset.content);
+              }
+            } else {
+              fetchUrl = `/api/proxy-content?url=${encodeURIComponent(asset.content)}`;
+              const res = await fetch(fetchUrl);
+              const text = await res.text();
+              setTextContent(text);
+              setLoadingText(false);
+              return;
+            }
           }
+          
+          // Default fallback
+          setTextContent("Không thể tải nội dung file. Vui lòng thử lại hoặc tải về máy.");
           setLoadingText(false);
-        })
-        .catch(() => setLoadingText(false));
+        } catch (error) {
+          console.error("Error in fetchText:", error);
+          setTextContent("Lỗi khi tải nội dung.");
+          setLoadingText(false);
+        }
+      };
+
+      fetchText();
     } else {
       setTextContent(null);
+      setLoadingText(false);
     }
   }, [asset]);
 
@@ -1203,6 +1302,19 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
       } catch (e) {
         console.log("Backend sync failed, trying direct Drive sync...");
         const path = getFolderPath(asset.folderId || null, folders);
+        
+        let syncContent = asset.content;
+        // If it's a text file and content is a DataURL, try to send raw text if possible
+        // or ensure the script knows it's base64
+        if (asset.type === 'text' && asset.content.startsWith('data:')) {
+          try {
+            const res = await fetch(asset.content);
+            syncContent = await res.text();
+          } catch (e) {
+            console.warn("Failed to decode DataURL for sync, sending as is");
+          }
+        }
+
         const res = await fetch(GOOGLE_SCRIPT_URL, {
           method: 'POST',
           mode: 'cors',
@@ -1211,7 +1323,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
             id: asset.id,
             name: asset.name,
             type: asset.type,
-            content: asset.content,
+            content: syncContent,
             size: asset.size,
             mimeType: asset.mimeType,
             ownerId: asset.ownerId,
@@ -1445,7 +1557,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
 
     fetchFolders();
     
-    if (!isDemo) {
+    if (!isDemo && !isStaticEnv()) {
       const socket = io();
       socket.on("data:updated", fetchFolders);
       return () => {
@@ -1481,7 +1593,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
 
     fetchAssets();
     
-    if (!isDemo) {
+    if (!isDemo && !isStaticEnv()) {
       const socket = io();
       socket.on("data:updated", fetchAssets);
       return () => {
@@ -2065,9 +2177,13 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
 };
 
 export default function App() {
-  const [user, setUser] = useState<User | { uid: string; email?: string; displayName?: string } | null>(() => {
-    const saved = localStorage.getItem('assethub_user');
-    if (saved) return JSON.parse(saved);
+  const [user, setUser] = useState<User | { uid: string; email?: string; displayName?: string; photoURL?: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem('assethub_user');
+      if (saved && saved !== 'undefined') return JSON.parse(saved);
+    } catch (e) {
+      console.error("Failed to parse user from localStorage", e);
+    }
     return { 
       uid: 'public_user', 
       email: 'public@assethub.local', 
@@ -2105,7 +2221,7 @@ export default function App() {
 
   const isAdmin = !isDemo && user?.uid === 'admin_user';
 
-  if (loading) {
+  if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f5f5f4]">
         <Loader2 className="w-10 h-10 text-zinc-300 animate-spin" />
