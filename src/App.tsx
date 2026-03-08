@@ -224,7 +224,8 @@ const AssetCard = ({
       const match = url.match(/\/file\/d\/([^\/]+)/) || url.match(/id=([^\&]+)/);
       if (match && match[1]) {
         fileId = match[1];
-        return `https://drive.google.com/uc?export=view&id=${fileId}`;
+        // Using lh3.googleusercontent.com is much more reliable for direct embedding
+        return `https://lh3.googleusercontent.com/d/${fileId}`;
       }
     }
 
@@ -276,9 +277,54 @@ const AssetCard = ({
     try {
       let text = '';
       if (asset.content.startsWith('http')) {
-        const response = await fetch(`/api/proxy-content?url=${encodeURIComponent(asset.content)}`);
-        if (!response.ok) throw new Error('Failed to fetch via proxy');
-        text = await response.text();
+        if (isStaticEnv()) {
+          // In static mode, try direct fetch first
+          try {
+            // Handle Google Drive links conversion for fetching
+            let fetchUrl = asset.content;
+            if (asset.content.includes('drive.google.com')) {
+              const match = asset.content.match(/\/file\/d\/([^\/]+)/) || asset.content.match(/id=([^\&]+)/);
+              if (match && match[1]) {
+                fetchUrl = `https://drive.google.com/uc?export=download&id=${match[1]}`;
+              }
+            }
+            
+            const response = await fetch(fetchUrl);
+            if (!response.ok) throw new Error('CORS or Network error');
+            text = await response.text();
+          } catch (e) {
+            console.log("Direct fetch failed, copying URL as fallback");
+            text = asset.content;
+          }
+        } else {
+          const response = await fetch(`/api/proxy-content?url=${encodeURIComponent(asset.content)}`);
+          if (!response.ok) throw new Error('Failed to fetch via proxy');
+          text = await response.text();
+        }
+      } else if (asset.content.startsWith('data:')) {
+        // Decode DataURL if it's base64
+        const parts = asset.content.split(',');
+        const base64Content = parts[1];
+        if (base64Content) {
+          try {
+            // Check if it's actually base64
+            if (parts[0].includes('base64')) {
+              text = atob(base64Content);
+              // Handle UTF-8 correctly
+              try {
+                text = decodeURIComponent(escape(text));
+              } catch (e) {
+                // Fallback if not valid UTF-8 escape sequence
+              }
+            } else {
+              text = decodeURIComponent(base64Content);
+            }
+          } catch (e) {
+            text = asset.content;
+          }
+        } else {
+          text = asset.content;
+        }
       } else {
         text = asset.content;
       }
@@ -750,14 +796,41 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
   useEffect(() => {
     if (asset && asset.type === 'text') {
       setLoadingText(true);
-      const fetchUrl = asset.content.startsWith('http') 
-        ? `/api/proxy-content?url=${encodeURIComponent(asset.content)}`
-        : asset.content;
+      
+      let fetchUrl = asset.content;
+      if (asset.content.startsWith('http')) {
+        if (isStaticEnv()) {
+          // Handle Google Drive links conversion for fetching in static mode
+          if (asset.content.includes('drive.google.com')) {
+            const match = asset.content.match(/\/file\/d\/([^\/]+)/) || asset.content.match(/id=([^\&]+)/);
+            if (match && match[1]) {
+              fetchUrl = `https://drive.google.com/uc?export=download&id=${match[1]}`;
+            }
+          }
+        } else {
+          fetchUrl = `/api/proxy-content?url=${encodeURIComponent(asset.content)}`;
+        }
+      }
         
       fetch(fetchUrl)
         .then(res => res.text())
         .then(text => {
-          setTextContent(text);
+          // If it's a DataURL, we might need to decode it if the browser didn't do it
+          if (text.startsWith('data:')) {
+             const parts = text.split(',');
+             const base64Content = parts[1];
+             if (base64Content && parts[0].includes('base64')) {
+               try {
+                 let decoded = atob(base64Content);
+                 try { decoded = decodeURIComponent(escape(decoded)); } catch(e) {}
+                 setTextContent(decoded);
+               } catch(e) { setTextContent(text); }
+             } else {
+               setTextContent(text);
+             }
+          } else {
+            setTextContent(text);
+          }
           setLoadingText(false);
         })
         .catch(() => setLoadingText(false));
@@ -775,7 +848,8 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
       const match = url.match(/\/file\/d\/([^\/]+)/) || url.match(/id=([^\&]+)/);
       if (match && match[1]) {
         fileId = match[1];
-        return `https://drive.google.com/uc?export=view&id=${fileId}`;
+        // Using lh3.googleusercontent.com is much more reliable for direct embedding
+        return `https://lh3.googleusercontent.com/d/${fileId}`;
       }
     }
 
