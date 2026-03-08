@@ -1808,12 +1808,6 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
             )}>
               {isAdmin ? "Admin" : "Public"}
             </div>
-            {driveStatus?.connected && (
-              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-full text-[8px] font-bold uppercase tracking-wider">
-                <Cloud size={8} />
-                <span>Drive Synced</span>
-              </div>
-            )}
           </div>
 
           <div className="flex-1 max-w-[100px] relative">
@@ -1828,6 +1822,19 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button 
+              onClick={handleImportFromDrive}
+              disabled={isImporting}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-full text-[8px] font-bold uppercase tracking-wider transition-all hover:bg-blue-100 active:scale-95 shadow-sm",
+                isImporting && "opacity-50 cursor-not-allowed"
+              )}
+              title="Cập nhật dữ liệu từ Drive"
+            >
+              <Cloud size={10} className={cn(isImporting && "animate-pulse")} />
+              <span>{isImporting ? "Updating..." : "Drive Synced"}</span>
+            </button>
+
             {isAdmin && (
               <button 
                 onClick={handleManualSync}
@@ -1839,19 +1846,6 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
                 title="Đồng bộ lên Drive"
               >
                 <Download size={12} className={cn(isSyncing && "animate-bounce")} />
-              </button>
-            )}
-            {isAdmin && (
-              <button 
-                onClick={handleImportFromDrive}
-                disabled={isImporting}
-                className={cn(
-                  "hidden md:flex items-center justify-center p-1 rounded-lg transition-all shadow-sm",
-                  isImporting ? "bg-zinc-100 text-zinc-400" : "bg-white text-zinc-900 hover:bg-zinc-50 border border-zinc-200"
-                )}
-                title="Lấy dữ liệu từ Drive"
-              >
-                <RefreshCw size={12} className={cn(isImporting && "animate-spin")} />
               </button>
             )}
             {isAdmin && (
