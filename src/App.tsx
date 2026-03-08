@@ -36,7 +36,9 @@ import {
   Lock,
   User as UserIcon,
   Check,
-  AlertCircle
+  AlertCircle,
+  CloudUpload,
+  RefreshCw
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'motion/react';
@@ -176,7 +178,8 @@ const AssetCard = ({
   onPreview, 
   onRename,
   viewMode = 'grid',
-  isAdmin = false
+  isAdmin = false,
+  onSync
 }: { 
   asset: Asset; 
   onDelete: (asset: Asset) => void | Promise<void>; 
@@ -184,10 +187,19 @@ const AssetCard = ({
   onRename: (asset: Asset) => void;
   viewMode?: 'grid' | 'list';
   isAdmin?: boolean;
+  onSync?: (asset: Asset) => void;
 }) => {
   const [isCopying, setIsCopying] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const dragRef = useRef(false);
   const isText = asset.type === 'text' || asset.mimeType.includes('text') || asset.name.endsWith('.txt') || asset.name.endsWith('.md');
+
+  const getDisplayUrl = (url: string) => {
+    if (url.startsWith('http')) {
+      return `/api/proxy-content?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  };
 
   const handleDragStart = (e: React.DragEvent) => {
     dragRef.current = true;
@@ -228,13 +240,30 @@ const AssetCard = ({
     e.stopPropagation();
     setIsCopying(true);
     try {
-      const response = await fetch(asset.content);
-      const text = await response.text();
+      let text = '';
+      if (asset.content.startsWith('http')) {
+        const response = await fetch(`/api/proxy-content?url=${encodeURIComponent(asset.content)}`);
+        if (!response.ok) throw new Error('Failed to fetch via proxy');
+        text = await response.text();
+      } else {
+        text = asset.content;
+      }
       await navigator.clipboard.writeText(text);
       setTimeout(() => setIsCopying(false), 2000);
     } catch (err) {
       console.error('Failed to copy content:', err);
       setIsCopying(false);
+    }
+  };
+
+  const handleSync = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isSyncing || !onSync) return;
+    setIsSyncing(true);
+    try {
+      await onSync(asset);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -253,7 +282,7 @@ const AssetCard = ({
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="w-6 h-6 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
             {asset.type === 'image' ? (
-              <img src={asset.content} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" draggable="false" />
+              <img src={getDisplayUrl(asset.content)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" draggable="false" />
             ) : (
               <FileIcon size={10} className="text-zinc-400" />
             )}
@@ -308,6 +337,17 @@ const AssetCard = ({
           {isAdmin && (
             <>
               <button 
+                onClick={handleSync}
+                disabled={isSyncing}
+                className={cn(
+                  "p-1 rounded-lg transition-colors",
+                  isSyncing ? "text-emerald-500 animate-pulse" : "hover:bg-zinc-200 text-zinc-600"
+                )}
+                title="Sync to Google Drive"
+              >
+                <CloudUpload size={10} />
+              </button>
+              <button 
                 onClick={(e) => { e.stopPropagation(); onRename(asset); }} 
                 className="p-1 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"
                 title="Rename"
@@ -342,7 +382,7 @@ const AssetCard = ({
       <div className="aspect-square bg-zinc-50 flex items-center justify-center relative overflow-hidden">
         {asset.type === 'image' ? (
           <img 
-            src={asset.content} 
+            src={getDisplayUrl(asset.content)} 
             alt={asset.name} 
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
@@ -400,6 +440,19 @@ const AssetCard = ({
               title="Copy content"
             >
               {isCopying ? <Check size={10} /> : <Copy size={10} />}
+            </button>
+          )}
+          {isAdmin && (
+            <button 
+              onClick={handleSync}
+              disabled={isSyncing}
+              className={cn(
+                "p-1 rounded-md shadow-sm backdrop-blur-md transition-colors",
+                isSyncing ? "bg-emerald-500 text-white animate-pulse" : "bg-white/80 hover:bg-white text-zinc-600"
+              )}
+              title="Sync to Google Drive"
+            >
+              <CloudUpload size={10} />
             </button>
           )}
         </div>
@@ -718,7 +771,11 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
   useEffect(() => {
     if (asset && asset.type === 'text') {
       setLoadingText(true);
-      fetch(asset.content)
+      const fetchUrl = asset.content.startsWith('http') 
+        ? `/api/proxy-content?url=${encodeURIComponent(asset.content)}`
+        : asset.content;
+        
+      fetch(fetchUrl)
         .then(res => res.text())
         .then(text => {
           setTextContent(text);
@@ -729,6 +786,13 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
       setTextContent(null);
     }
   }, [asset]);
+
+  const getDisplayUrl = (url: string) => {
+    if (url.startsWith('http')) {
+      return `/api/proxy-content?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  };
 
   if (!asset) return null;
 
@@ -790,7 +854,7 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
           <div className="flex-1 overflow-auto bg-zinc-50 p-6 flex items-center justify-center">
             {asset.type === 'image' ? (
               <img 
-                src={asset.content} 
+                src={getDisplayUrl(asset.content)} 
                 alt={asset.name} 
                 className="max-w-full max-h-full object-contain shadow-lg rounded-lg"
                 referrerPolicy="no-referrer"
@@ -827,6 +891,7 @@ const FolderItem = ({
   onSelect, 
   onDelete, 
   onRename,
+  onSync,
   level = 0,
   isAdmin = false
 }: { 
@@ -836,10 +901,12 @@ const FolderItem = ({
   onSelect: (id: string) => void; 
   onDelete: (e: React.MouseEvent, id: string) => void;
   onRename: (e: React.MouseEvent, folder: Folder) => void;
+  onSync: (e: React.MouseEvent, id: string) => void;
   level?: number;
   isAdmin?: boolean;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const subFolders = folders
     .filter(f => f.parentId === folder.id)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -872,6 +939,25 @@ const FolderItem = ({
           {isAdmin && (
             <>
               <button 
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setIsSyncing(true);
+                  try {
+                    await onSync(e, folder.id);
+                  } finally {
+                    setIsSyncing(false);
+                  }
+                }}
+                disabled={isSyncing}
+                className={cn(
+                  "p-1 rounded text-zinc-400 transition-colors",
+                  isSyncing ? "text-emerald-500 animate-pulse" : "hover:bg-zinc-200 hover:text-zinc-900"
+                )}
+                title="Sync to Google Drive"
+              >
+                <CloudUpload size={10} />
+              </button>
+              <button 
                 onClick={(e) => onRename(e, folder)}
                 className="p-1 hover:bg-zinc-200 rounded text-zinc-400 hover:text-zinc-900 transition-colors"
                 title="Rename"
@@ -903,6 +989,7 @@ const FolderItem = ({
                 onSelect={onSelect} 
                 onDelete={onDelete}
                 onRename={onRename}
+                onSync={onSync}
                 level={level + 1}
                 isAdmin={isAdmin}
               />
@@ -936,6 +1023,94 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [gridSize, setGridSize] = useState(4); // 1 to 5, default 4 (Large/3 columns)
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleImportFromDrive = async () => {
+    if (isImporting) return;
+    setIsImporting(true);
+    try {
+      const res = await fetch('/api/drive-list');
+      const data = await res.json();
+      
+      if (data.folders && data.files) {
+        const importRes = await fetch('/api/import-from-drive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const importData = await importRes.json();
+        if (importData.success) {
+          alert(`Đã nhập thành công ${data.folders.length} thư mục và ${data.files.length} file từ Google Drive!`);
+        }
+      } else {
+        alert('Không tìm thấy dữ liệu trên Drive hoặc Script gặp lỗi.');
+      }
+    } catch (error) {
+      console.error('Import from Drive failed:', error);
+      alert('Lỗi khi lấy dữ liệu từ Drive.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/sync-all', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        alert('Đã bắt đầu đồng bộ toàn bộ dữ liệu lên Google Drive!');
+      } else {
+        alert('Đồng bộ thất bại: ' + (data.error || 'Lỗi không xác định'));
+      }
+    } catch (error) {
+      console.error('Manual sync failed:', error);
+      alert('Đồng bộ thất bại. Vui lòng kiểm tra console.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSyncAsset = async (asset: Asset) => {
+    if (isDemo) {
+      alert('Tính năng đồng bộ Google Drive chỉ khả dụng ở chế độ Quản trị.');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/sync-asset/${asset.id}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        // Optional: show a small toast or success indicator
+      } else {
+        alert('Đồng bộ file thất bại: ' + (data.error || 'Lỗi không xác định'));
+      }
+    } catch (error) {
+      console.error('Asset sync failed:', error);
+      alert('Đồng bộ file thất bại. Vui lòng kiểm tra console.');
+    }
+  };
+
+  const handleSyncFolder = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (isDemo) {
+      alert('Tính năng đồng bộ Google Drive chỉ khả dụng ở chế độ Quản trị.');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/sync-folder/${id}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        // Optional: show a small toast or success indicator
+      } else {
+        alert('Đồng bộ thư mục thất bại: ' + (data.error || 'Lỗi không xác định'));
+      }
+    } catch (error) {
+      console.error('Folder sync failed:', error);
+      alert('Đồng bộ thư mục thất bại. Vui lòng kiểm tra console.');
+    }
+  };
 
   const handleUpload = async (files: File[]) => {
     const newUploadingFiles = files.map(file => ({
@@ -1304,6 +1479,32 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
           <div className="flex items-center gap-1.5">
             {isAdmin && (
               <button 
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                className={cn(
+                  "hidden md:flex items-center justify-center p-1 rounded-lg transition-all shadow-sm",
+                  isSyncing ? "bg-zinc-100 text-zinc-400" : "bg-white text-zinc-900 hover:bg-zinc-50 border border-zinc-200"
+                )}
+                title="Đồng bộ lên Drive"
+              >
+                <Download size={12} className={cn(isSyncing && "animate-bounce")} />
+              </button>
+            )}
+            {isAdmin && (
+              <button 
+                onClick={handleImportFromDrive}
+                disabled={isImporting}
+                className={cn(
+                  "hidden md:flex items-center justify-center p-1 rounded-lg transition-all shadow-sm",
+                  isImporting ? "bg-zinc-100 text-zinc-400" : "bg-white text-zinc-900 hover:bg-zinc-50 border border-zinc-200"
+                )}
+                title="Lấy dữ liệu từ Drive"
+              >
+                <RefreshCw size={12} className={cn(isImporting && "animate-spin")} />
+              </button>
+            )}
+            {isAdmin && (
+              <button 
                 onClick={() => {
                   const input = document.createElement('input');
                   input.type = 'file';
@@ -1386,6 +1587,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
                     e.stopPropagation();
                     setRenameItem({ id: f.id, name: f.name, type: 'folder' });
                   }}
+                  onSync={handleSyncFolder}
                   isAdmin={isAdmin}
                 />
               );
@@ -1558,6 +1760,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
                         onDelete={handleDelete}
                         onPreview={setPreviewAsset}
                         onRename={(a: Asset) => setRenameItem({ id: a.id, name: a.name, type: 'asset' })}
+                        onSync={handleSyncAsset}
                         isAdmin={isAdmin}
                       />
                     );
