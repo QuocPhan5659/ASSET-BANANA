@@ -64,6 +64,22 @@ const safeToDate = (date: any): Date => {
 };
 
 const ADMIN_PASSWORD = 'qvp5659QuocViPhan1234';
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwChR5AgYhQI_49nvkY1N-WVggatMXEQeN8YJA-nEczbYUpKGa2p2f_FxzkANw2RQ1x/exec";
+const TARGET_DRIVE_FOLDER_ID = "1MlLf6hr-H4VzIQThltwhAgQJVbLKjRB3";
+
+const getFolderPath = (folderId: string | null, allFolders: Folder[]): string[] => {
+  if (!folderId) return [];
+  const folder = allFolders.find(f => f.id === folderId);
+  if (!folder) return [];
+  return [...getFolderPath(folder.parentId || null, allFolders), folder.name];
+};
+
+// Helper to check if we are running in a static/serverless environment
+const isStaticEnv = () => {
+  return window.location.hostname.includes('github.io') || 
+         window.location.protocol === 'file:' ||
+         window.location.hostname === '';
+};
 
 // --- Types ---
 interface Folder {
@@ -197,6 +213,7 @@ const AssetCard = ({
 
   const getDisplayUrl = (url: string) => {
     if (url.startsWith('http')) {
+      if (isStaticEnv()) return url;
       return `/api/proxy-content?url=${encodeURIComponent(url)}`;
     }
     return url;
@@ -735,6 +752,7 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
 
   const getDisplayUrl = (url: string) => {
     if (url.startsWith('http')) {
+      if (isStaticEnv()) return url;
       return `/api/proxy-content?url=${encodeURIComponent(url)}`;
     }
     return url;
@@ -975,34 +993,74 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
 
   useEffect(() => {
     fetch('/api/drive-status')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Backend not available');
+        return res.json();
+      })
       .then(data => setDriveStatus(data))
-      .catch(() => setDriveStatus({ connected: false, folderId: '' }));
+      .catch(() => {
+        // Fallback for static/serverless mode
+        setDriveStatus({ 
+          connected: !!GOOGLE_SCRIPT_URL, 
+          folderId: TARGET_DRIVE_FOLDER_ID 
+        });
+      });
   }, []);
 
   const handleImportFromDrive = async () => {
     if (isImporting) return;
     setIsImporting(true);
     try {
-      const res = await fetch('/api/drive-list');
-      const data = await res.json();
-      
-      if (data.folders && data.files) {
-        const importRes = await fetch('/api/import-from-drive', {
+      let data;
+      let isServerless = false;
+
+      try {
+        const res = await fetch('/api/drive-list');
+        if (!res.ok) throw new Error('Backend not available');
+        data = await res.json();
+      } catch (e) {
+        console.log('Backend not available, trying direct Drive access...');
+        isServerless = true;
+        const res = await fetch(GOOGLE_SCRIPT_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+          mode: 'cors',
+          body: JSON.stringify({ action: "listAll", targetDriveFolderId: TARGET_DRIVE_FOLDER_ID }),
+          headers: { "Content-Type": "text/plain;charset=utf-8" }, // Use text/plain to avoid preflight issues with some CORS configs
         });
-        const importData = await importRes.json();
-        if (importData.success) {
-          alert(`Đã nhập thành công ${data.folders.length} thư mục và ${data.files.length} file từ Google Drive!`);
+        data = await res.json();
+      }
+      
+      if (data && data.folders && data.files) {
+        if (isServerless || isStaticEnv()) {
+          // Save to local storage directly
+          localService.saveFolders(data.folders);
+          localService.saveAssets(data.files);
+          setFolders(data.folders);
+          setAssets(data.files);
+          alert(`Đã tải thành công ${data.folders.length} thư mục và ${data.files.length} file từ Google Drive về trình duyệt!`);
+        } else {
+          // Save to backend
+          const importRes = await fetch('/api/import-from-drive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+          const importData = await importRes.json();
+          if (importData.success) {
+            alert(`Đã nhập thành công ${data.folders.length} thư mục và ${data.files.length} file từ Google Drive!`);
+            // Refresh data from backend
+            const assetsRes = await fetch('/api/assets');
+            const foldersRes = await fetch('/api/folders');
+            setAssets(await assetsRes.json());
+            setFolders(await foldersRes.json());
+          }
         }
       } else {
         alert('Không tìm thấy dữ liệu trên Drive hoặc Script gặp lỗi.');
       }
     } catch (error) {
       console.error('Import from Drive failed:', error);
-      alert('Lỗi khi lấy dữ liệu từ Drive.');
+      alert('Lỗi khi lấy dữ liệu từ Drive. Vui lòng kiểm tra kết nối internet hoặc cấu hình Script.');
     } finally {
       setIsImporting(false);
     }
@@ -1033,12 +1091,41 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
       return;
     }
     try {
-      const res = await fetch(`/api/sync-asset/${asset.id}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        // Optional: show a small toast or success indicator
-      } else {
-        alert('Đồng bộ file thất bại: ' + (data.error || 'Lỗi không xác định'));
+      try {
+        const res = await fetch(`/api/sync-asset/${asset.id}`, { method: 'POST' });
+        if (!res.ok) throw new Error('Backend not available');
+        const data = await res.json();
+        if (!data.success) {
+          alert('Đồng bộ file thất bại: ' + (data.error || 'Lỗi không xác định'));
+        }
+      } catch (e) {
+        console.log("Backend sync failed, trying direct Drive sync...");
+        const path = getFolderPath(asset.folderId || null, folders);
+        const res = await fetch(GOOGLE_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'cors',
+          body: JSON.stringify({
+            action: "uploadFile",
+            id: asset.id,
+            name: asset.name,
+            type: asset.type,
+            content: asset.content,
+            size: asset.size,
+            mimeType: asset.mimeType,
+            ownerId: asset.ownerId,
+            folderId: asset.folderId,
+            path,
+            targetDriveFolderId: TARGET_DRIVE_FOLDER_ID,
+            timestamp: new Date().toISOString()
+          }),
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+        });
+        const data = await res.json();
+        if (data.success) {
+          // Success
+        } else {
+          alert('Đồng bộ trực tiếp thất bại. Vui lòng kiểm tra Script.');
+        }
       }
     } catch (error) {
       console.error('Asset sync failed:', error);
@@ -1052,13 +1139,40 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
       alert('Tính năng đồng bộ Google Drive chỉ khả dụng ở chế độ Quản trị.');
       return;
     }
+    const folder = folders.find(f => f.id === id);
+    if (!folder) return;
+
     try {
-      const res = await fetch(`/api/sync-folder/${id}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        // Optional: show a small toast or success indicator
-      } else {
-        alert('Đồng bộ thư mục thất bại: ' + (data.error || 'Lỗi không xác định'));
+      try {
+        const res = await fetch(`/api/sync-folder/${id}`, { method: 'POST' });
+        if (!res.ok) throw new Error('Backend not available');
+        const data = await res.json();
+        if (!data.success) {
+          alert('Đồng bộ thư mục thất bại: ' + (data.error || 'Lỗi không xác định'));
+        }
+      } catch (err) {
+        console.log("Backend sync failed, trying direct Drive sync...");
+        const path = getFolderPath(folder.parentId || null, folders);
+        const res = await fetch(GOOGLE_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'cors',
+          body: JSON.stringify({
+            action: "createFolder",
+            id: folder.id,
+            name: folder.name,
+            parentId: folder.parentId,
+            path,
+            targetDriveFolderId: TARGET_DRIVE_FOLDER_ID,
+            timestamp: new Date().toISOString()
+          }),
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+        });
+        const data = await res.json();
+        if (data.success) {
+          // Success
+        } else {
+          alert('Đồng bộ trực tiếp thất bại. Vui lòng kiểm tra Script.');
+        }
       }
     } catch (error) {
       console.error('Folder sync failed:', error);
@@ -1120,20 +1234,31 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
           });
           storagePath = 'local-storage';
         } else {
-          // Local API Upload
-          const formData = new FormData();
-          formData.append('file', fileToUpload);
+          try {
+            // Local API Upload
+            const formData = new FormData();
+            formData.append('file', fileToUpload);
 
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-          });
+            const response = await fetch('/api/upload', {
+              method: 'POST',
+              body: formData
+            });
 
-          if (!response.ok) throw new Error('Upload failed');
-          
-          const uploadResult = await response.json();
-          contentUrl = uploadResult.url;
-          storagePath = uploadResult.isCloudinary ? `cloudinary/${uploadResult.filename}` : `uploads/${uploadResult.filename}`;
+            if (!response.ok) throw new Error('Backend not available');
+            
+            const uploadResult = await response.json();
+            contentUrl = uploadResult.url;
+            storagePath = uploadResult.isCloudinary ? `cloudinary/${uploadResult.filename}` : `uploads/${uploadResult.filename}`;
+          } catch (e) {
+            console.log("Backend upload failed, using serverless mode (Base64)");
+            contentUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = () => reject(new Error("Failed to read file"));
+              reader.readAsDataURL(fileToUpload);
+            });
+            storagePath = 'serverless-storage';
+          }
         }
 
         // 3. Metadata step (90-100%)
@@ -1158,15 +1283,23 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
           localService.addAsset(assetData as any);
           setAssets(localService.getAssets());
         } else {
-          await fetch('/api/assets', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(assetData)
-          });
-          // Refresh
-          const res = await fetch('/api/assets');
-          const data = await res.json();
-          setAssets(data);
+          try {
+            const res = await fetch('/api/assets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(assetData)
+            });
+            if (!res.ok) throw new Error('Backend not available');
+            
+            // Refresh
+            const refreshRes = await fetch('/api/assets');
+            const data = await refreshRes.json();
+            setAssets(data);
+          } catch (e) {
+            console.log("Backend save asset failed, using local storage");
+            localService.addAsset(assetData as any);
+            setAssets(localService.getAssets());
+          }
         }
 
         setUploadingFiles(prev => prev.map(f => 
@@ -1199,10 +1332,12 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
     const fetchFolders = async () => {
       try {
         const res = await fetch('/api/folders');
+        if (!res.ok) throw new Error('Backend not available');
         const data = await res.json();
         setFolders(data);
       } catch (error) {
-        console.error("Error fetching folders:", error);
+        console.log("Backend folders failed, using local storage");
+        setFolders(localService.getFolders());
       }
     };
 
@@ -1231,11 +1366,13 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
     const fetchAssets = async () => {
       try {
         const res = await fetch('/api/assets');
+        if (!res.ok) throw new Error('Backend not available');
         const data = await res.json();
         setAssets(data);
         setLoading(false);
       } catch (error) {
-        console.error("Error fetching assets:", error);
+        console.log("Backend assets failed, using local storage");
+        setAssets(localService.getAssets());
         setLoading(false);
       }
     };
@@ -1279,15 +1416,26 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
         localService.addFolder(folderData as any);
         setFolders(localService.getFolders());
       } else {
-        await fetch('/api/folders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(folderData)
-        });
-        // Trigger immediate refresh
-        const res = await fetch('/api/folders');
-        const data = await res.json();
-        setFolders(data);
+        try {
+          const res = await fetch('/api/folders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(folderData)
+          });
+          if (!res.ok) throw new Error('Backend not available');
+          
+          // Trigger immediate refresh
+          const refreshRes = await fetch('/api/folders');
+          const data = await refreshRes.json();
+          setFolders(data);
+        } catch (e) {
+          console.log("Backend create folder failed, using local storage");
+          localService.addFolder(folderData as any);
+          setFolders(localService.getFolders());
+          
+          // In serverless mode, we should also try to sync this folder to Drive if possible
+          // But for now, let's just keep it local and rely on manual sync if needed
+        }
       }
     } catch (error) {
       console.error("Error creating folder:", error);
@@ -1315,11 +1463,18 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
           localService.deleteAsset(asset.id);
           setAssets(localService.getAssets());
         } else {
-          await fetch(`/api/assets/${asset.id}`, { method: 'DELETE' });
-          // Refresh
-          const res = await fetch('/api/assets');
-          const data = await res.json();
-          setAssets(data);
+          try {
+            const res = await fetch(`/api/assets/${asset.id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Backend not available');
+            // Refresh
+            const refreshRes = await fetch('/api/assets');
+            const data = await refreshRes.json();
+            setAssets(data);
+          } catch (e) {
+            console.log("Backend delete asset failed, using local storage");
+            localService.deleteAsset(asset.id);
+            setAssets(localService.getAssets());
+          }
         }
       } else if (deleteItem.type === 'folder') {
         const id = deleteItem.id;
@@ -1328,14 +1483,22 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
           setFolders(localService.getFolders());
           setAssets(localService.getAssets());
         } else {
-          await fetch(`/api/folders/${id}`, { method: 'DELETE' });
-          // Refresh
-          const resF = await fetch('/api/folders');
-          const dataF = await resF.json();
-          setFolders(dataF);
-          const resA = await fetch('/api/assets');
-          const dataA = await resA.json();
-          setAssets(dataA);
+          try {
+            const res = await fetch(`/api/folders/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Backend not available');
+            // Refresh
+            const resF = await fetch('/api/folders');
+            const dataF = await resF.json();
+            setFolders(dataF);
+            const resA = await fetch('/api/assets');
+            const dataA = await resA.json();
+            setAssets(dataA);
+          } catch (e) {
+            console.log("Backend delete folder failed, using local storage");
+            localService.deleteFolder(id);
+            setFolders(localService.getFolders());
+            setAssets(localService.getAssets());
+          }
         }
         if (selectedFolderId === id) setSelectedFolderId(null);
       }
@@ -1357,21 +1520,35 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
           setFolders(localService.getFolders());
         }
       } else {
-        const endpoint = renameItem.type === 'asset' ? 'assets' : 'folders';
-        await fetch(`/api/${endpoint}/${renameItem.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: newName })
-        });
-        // Refresh
-        if (renameItem.type === 'asset') {
-          const res = await fetch('/api/assets');
-          const data = await res.json();
-          setAssets(data);
-        } else {
-          const res = await fetch('/api/folders');
-          const data = await res.json();
-          setFolders(data);
+        try {
+          const endpoint = renameItem.type === 'asset' ? 'assets' : 'folders';
+          const res = await fetch(`/api/${endpoint}/${renameItem.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName })
+          });
+          if (!res.ok) throw new Error('Backend not available');
+          
+          // Refresh
+          if (renameItem.type === 'asset') {
+            const refreshRes = await fetch('/api/assets');
+            const data = await refreshRes.json();
+            setAssets(data);
+          } else {
+            const refreshRes = await fetch('/api/folders');
+            const data = await refreshRes.json();
+            setFolders(data);
+          }
+        } catch (e) {
+          console.log("Backend rename failed, using local storage");
+          if (renameItem.type === 'asset') {
+            localService.updateAsset(renameItem.id, { name: newName });
+            setAssets(localService.getAssets());
+          } else {
+            const folders = localService.getFolders();
+            localService.saveFolders(folders.map(f => f.id === renameItem.id ? { ...f, name: newName } : f));
+            setFolders(localService.getFolders());
+          }
         }
       }
     } catch (error) {
