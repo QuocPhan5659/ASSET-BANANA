@@ -77,8 +77,12 @@ const getFolderPath = (folderId: string | null, allFolders: Folder[]): string[] 
 // Helper to check if we are running in a static/serverless environment
 const isStaticEnv = () => {
   return window.location.hostname.includes('github.io') || 
+         window.location.hostname.includes('vercel.app') ||
+         window.location.hostname.includes('netlify.app') ||
          window.location.protocol === 'file:' ||
-         window.location.hostname === '';
+         window.location.hostname === '' ||
+         window.location.port === '5173' || // Vite default dev port often used for static testing
+         !window.location.hostname.includes('run.app'); // AI Studio default
 };
 
 // --- Types ---
@@ -212,6 +216,18 @@ const AssetCard = ({
   const isText = asset.type === 'text' || asset.mimeType.includes('text') || asset.name.endsWith('.txt') || asset.name.endsWith('.md');
 
   const getDisplayUrl = (url: string) => {
+    if (!url) return '';
+    
+    // Handle Google Drive links for direct display in static mode
+    if (url.includes('drive.google.com')) {
+      let fileId = '';
+      const match = url.match(/\/file\/d\/([^\/]+)/) || url.match(/id=([^\&]+)/);
+      if (match && match[1]) {
+        fileId = match[1];
+        return `https://drive.google.com/uc?export=view&id=${fileId}`;
+      }
+    }
+
     if (url.startsWith('http')) {
       if (isStaticEnv()) return url;
       return `/api/proxy-content?url=${encodeURIComponent(url)}`;
@@ -751,6 +767,18 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
   }, [asset]);
 
   const getDisplayUrl = (url: string) => {
+    if (!url) return '';
+    
+    // Handle Google Drive links for direct display in static mode
+    if (url.includes('drive.google.com')) {
+      let fileId = '';
+      const match = url.match(/\/file\/d\/([^\/]+)/) || url.match(/id=([^\&]+)/);
+      if (match && match[1]) {
+        fileId = match[1];
+        return `https://drive.google.com/uc?export=view&id=${fileId}`;
+      }
+    }
+
     if (url.startsWith('http')) {
       if (isStaticEnv()) return url;
       return `/api/proxy-content?url=${encodeURIComponent(url)}`;
