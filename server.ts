@@ -51,6 +51,46 @@ db.exec(`
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwChR5AgYhQI_49nvkY1N-WVggatMXEQeN8YJA-nEczbYUpKGa2p2f_FxzkANw2RQ1x/exec";
 const TARGET_DRIVE_FOLDER_ID = "1MlLf6hr-H4VzIQThltwhAgQJVbLKjRB3";
 
+// Auto-sync from Drive on startup if DB is empty
+async function initializeFromDrive() {
+  try {
+    const folderCount = db.prepare("SELECT COUNT(*) as count FROM folders").get() as { count: number };
+    const assetCount = db.prepare("SELECT COUNT(*) as count FROM assets").get() as { count: number };
+    
+    if (folderCount.count === 0 && assetCount.count === 0) {
+      console.log("Database is empty. Auto-syncing from Google Drive...");
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "listAll", targetDriveFolderId: TARGET_DRIVE_FOLDER_ID }),
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (response.ok) {
+        const data = await response.json() as { folders: any[], files: any[] };
+        if (data.folders && data.files) {
+          const insertFolder = db.prepare("INSERT OR IGNORE INTO folders (id, name, ownerId, parentId) VALUES (?, ?, ?, ?)");
+          const insertAsset = db.prepare("INSERT OR IGNORE INTO assets (id, name, type, content, storagePath, size, mimeType, ownerId, folderId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+          
+          const transaction = db.transaction(() => {
+            for (const folder of data.folders) {
+              insertFolder.run(folder.id, folder.name, folder.ownerId || 'admin', folder.parentId);
+            }
+            for (const file of data.files) {
+              insertAsset.run(file.id, file.name, file.type, file.content, file.storagePath, file.size, file.mimeType, file.ownerId || 'admin', file.folderId);
+            }
+          });
+          transaction();
+          console.log(`Auto-sync complete: ${data.folders.length} folders and ${data.files.length} assets imported.`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Auto-sync failed during initialization:", err);
+  }
+}
+
+initializeFromDrive();
+
 async function syncToGoogleDrive(data: any): Promise<boolean> {
   const payload = { ...data, targetDriveFolderId: TARGET_DRIVE_FOLDER_ID };
   console.log(`Đang gửi dữ liệu đồng bộ: ${payload.action} - ${payload.name || payload.id} (Path: ${payload.path?.join('/') || 'Root'})`);
@@ -433,6 +473,14 @@ async function startServer() {
       console.error("Drive list failed:", error);
       res.status(500).json({ error: "Drive list failed" });
     }
+  });
+
+  app.get("/api/drive-status", (req, res) => {
+    res.json({
+      connected: true,
+      folderId: TARGET_DRIVE_FOLDER_ID,
+      scriptUrl: GOOGLE_SCRIPT_URL ? "Configured" : "Missing"
+    });
   });
 
   app.post("/api/import-from-drive", async (req, res) => {

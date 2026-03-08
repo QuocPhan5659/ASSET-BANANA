@@ -37,6 +37,7 @@ import {
   User as UserIcon,
   Check,
   AlertCircle,
+  Cloud,
   CloudUpload,
   RefreshCw
 } from 'lucide-react';
@@ -296,32 +297,6 @@ const AssetCard = ({
         </div>
         
         <div className="flex items-center gap-1">
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              navigator.clipboard.writeText(`${window.location.origin}${asset.content}`);
-              // Use a subtle notification instead of alert if possible, but alert is fine for now
-              const btn = e.currentTarget;
-              const originalColor = btn.style.color;
-              btn.style.color = '#10b981';
-              setTimeout(() => btn.style.color = originalColor, 2000);
-            }}
-            className="p-1 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"
-            title="Copy Link"
-          >
-            <Copy size={10} />
-          </button>
-          <a 
-            href={asset.content} 
-            download={asset.name}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-1 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"
-            title="Download"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Download size={10} />
-          </a>
           {isText && (
             <button 
               onClick={handleCopyContent} 
@@ -401,35 +376,6 @@ const AssetCard = ({
         )}
         
         <div className="absolute top-1 right-1 flex flex-col gap-0.5">
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              navigator.clipboard.writeText(`${window.location.origin}${asset.content}`);
-              const btn = e.currentTarget;
-              const originalBg = btn.style.backgroundColor;
-              btn.style.backgroundColor = '#10b981';
-              btn.style.color = 'white';
-              setTimeout(() => {
-                btn.style.backgroundColor = originalBg;
-                btn.style.color = '';
-              }, 2000);
-            }}
-            className="p-1 rounded-md shadow-sm backdrop-blur-md bg-white/80 hover:bg-white text-zinc-600 transition-colors"
-            title="Copy Link"
-          >
-            <Copy size={10} />
-          </button>
-          <a 
-            href={asset.content} 
-            download={asset.name}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-1 rounded-md shadow-sm backdrop-blur-md bg-white/80 hover:bg-white text-zinc-600 transition-colors"
-            title="Download"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Download size={10} />
-          </a>
           {isText && (
             <button 
               onClick={handleCopyContent} 
@@ -1025,6 +971,14 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
   const [gridSize, setGridSize] = useState(4); // 1 to 5, default 4 (Large/3 columns)
   const [isSyncing, setIsSyncing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [driveStatus, setDriveStatus] = useState<{ connected: boolean; folderId: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/drive-status')
+      .then(res => res.json())
+      .then(data => setDriveStatus(data))
+      .catch(() => setDriveStatus({ connected: false, folderId: '' }));
+  }, []);
 
   const handleImportFromDrive = async () => {
     if (isImporting) return;
@@ -1463,6 +1417,12 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
             )}>
               {isAdmin ? "Admin" : "Public"}
             </div>
+            {driveStatus?.connected && (
+              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-full text-[8px] font-bold uppercase tracking-wider">
+                <Cloud size={8} />
+                <span>Drive Synced</span>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 max-w-[100px] relative">
