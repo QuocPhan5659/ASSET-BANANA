@@ -30,6 +30,7 @@ import {
   Folder as FolderIcon,
   FolderPlus,
   ArrowLeft,
+  ArrowRight,
   Edit2,
   Copy,
   Mail,
@@ -824,14 +825,14 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
   const [loadingText, setLoadingText] = useState(false);
 
   useEffect(() => {
-    if (asset && asset.type === 'text') {
+    const isText = asset && (asset.type === 'text' || asset.mimeType?.includes('text') || asset.name?.endsWith('.txt') || asset.name?.endsWith('.md') || asset.name?.endsWith('.csv'));
+    
+    if (asset && isText) {
       setLoadingText(true);
       setTextContent(null);
       
       const fetchText = async () => {
         try {
-          let fetchUrl = asset.content;
-          
           // If it's a DataURL, we can try to decode it directly first for speed
           if (asset.content.startsWith('data:')) {
             try {
@@ -845,9 +846,15 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
               const parts = asset.content.split(',');
               const base64Content = parts[1];
               if (base64Content && parts[0].includes('base64')) {
-                let decoded = atob(base64Content);
-                try { decoded = decodeURIComponent(escape(decoded)); } catch(e) {}
-                setTextContent(decoded);
+                try {
+                  const decoded = atob(base64Content);
+                  // Use TextDecoder for better UTF-8 support
+                  const bytes = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
+                  const utf8Text = new TextDecoder().decode(bytes);
+                  setTextContent(utf8Text);
+                } catch(e) {
+                  setTextContent(atob(base64Content));
+                }
               } else {
                 setTextContent(decodeURIComponent(base64Content || ''));
               }
@@ -863,7 +870,8 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
                 const match = asset.content.match(/\/file\/d\/([^\/]+)/) || asset.content.match(/id=([^\&]+)/);
                 if (match && match[1]) {
                   const fileId = match[1];
-                  // Try direct fetch first
+                  
+                  // Try direct fetch first (might fail due to CORS)
                   try {
                     const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
                     const res = await fetch(directUrl);
@@ -899,7 +907,7 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
                 }
               }
               
-              // Generic direct fetch for other URLs
+              // Generic direct fetch for other URLs in static env
               try {
                 const res = await fetch(asset.content);
                 if (res.ok) {
@@ -912,16 +920,23 @@ const PreviewModal = ({ asset, onClose, onRename, onDelete, isAdmin }: { asset: 
                 console.warn("Generic fetch failed for", asset.content);
               }
             } else {
-              fetchUrl = `/api/proxy-content?url=${encodeURIComponent(asset.content)}`;
-              const res = await fetch(fetchUrl);
-              const text = await res.text();
-              setTextContent(text);
-              setLoadingText(false);
-              return;
+              // Non-static env: use backend proxy
+              try {
+                const fetchUrl = `/api/proxy-content?url=${encodeURIComponent(asset.content)}`;
+                const res = await fetch(fetchUrl);
+                if (res.ok) {
+                  const text = await res.text();
+                  setTextContent(text);
+                  setLoadingText(false);
+                  return;
+                }
+              } catch (e) {
+                console.error("Backend proxy fetch failed:", e);
+              }
             }
           }
           
-          // Default fallback
+          // Default fallback if all methods fail
           setTextContent("Không thể tải nội dung file. Vui lòng thử lại hoặc tải về máy.");
           setLoadingText(false);
         } catch (error) {
@@ -1306,7 +1321,9 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
         let syncContent = asset.content;
         // If it's a text file and content is a DataURL, try to send raw text if possible
         // or ensure the script knows it's base64
-        if (asset.type === 'text' && asset.content.startsWith('data:')) {
+        const isText = asset.type === 'text' || asset.mimeType?.includes('text') || asset.name?.endsWith('.txt') || asset.name?.endsWith('.md') || asset.name?.endsWith('.csv');
+        
+        if (isText && asset.content.startsWith('data:')) {
           try {
             const res = await fetch(asset.content);
             syncContent = await res.text();
@@ -1776,8 +1793,11 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
 
   const filteredAssets = sortedAssets.filter(asset => {
     const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase());
+    // If searching, show all matching assets regardless of folder
+    if (searchQuery) return matchesSearch;
+    // Otherwise, filter by current folder
     const matchesFolder = selectedFolderId ? asset.folderId === selectedFolderId : !asset.folderId;
-    return matchesSearch && matchesFolder;
+    return matchesFolder;
   });
 
   const rootFolders = sortedFolders.filter(f => !f.parentId);
@@ -1810,18 +1830,25 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
             </div>
           </div>
 
-          <div className="flex-1 max-w-[100px] relative">
-            <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 text-zinc-400" size={10} />
+          <div className="flex-1 max-w-[240px] relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" size={12} />
             <input 
               type="text" 
-              placeholder="Search..."
+              placeholder="Search assets..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-6 pr-1.5 py-0.5 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-lg text-[10px] transition-all outline-none"
+              className="w-full pl-8 pr-3 py-1 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-xl text-[11px] transition-all outline-none"
             />
           </div>
 
           <div className="flex items-center gap-1.5">
+            <motion.div
+              animate={{ x: [0, 4, 0] }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+              className="text-blue-500 hidden sm:block"
+            >
+              <ArrowRight size={12} />
+            </motion.div>
             <button 
               onClick={handleImportFromDrive}
               disabled={isImporting}
