@@ -1831,7 +1831,9 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
                 className="w-full pl-8 pr-3 py-1 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-xl text-[11px] transition-all outline-none"
               />
             </div>
+          </div>
 
+          <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <motion.div
                 animate={{ x: [0, 4, 0] }}
@@ -1852,6 +1854,13 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
                 <Cloud size={10} className={cn(isImporting && "animate-pulse")} />
                 <span>{isImporting ? "Updating..." : "Drive Synced"}</span>
               </button>
+              <motion.div
+                animate={{ x: [0, -4, 0] }}
+                transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                className="text-blue-500 hidden sm:block"
+              >
+                <ArrowLeft size={12} />
+              </motion.div>
 
               {isAdmin && (
                 <div className="flex items-center gap-1.5">
@@ -1884,9 +1893,7 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="flex items-center gap-3">
             <div className={cn(
               "px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-widest",
               isAdmin ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"
@@ -1963,66 +1970,68 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
         {/* Right Column - Assets */}
         <main className="flex-1 flex flex-col bg-[#f5f5f4] overflow-hidden relative">
           <div className="p-3 flex-shrink-0 flex items-end justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-zinc-400 mb-0.5">
-                {selectedFolderId && (
-                  <button onClick={() => setSelectedFolderId(null)} className="hover:text-zinc-900 transition-colors">
-                    <ArrowLeft size={10} />
-                  </button>
-                )}
-                <span className="text-[8px] font-bold uppercase tracking-widest">Library</span>
-              </div>
-              <h2 className="text-base font-semibold tracking-tight text-zinc-900 mb-0">{selectedFolderName}</h2>
-              <p className="text-[9px] text-zinc-500 font-medium">
-                {filteredAssets.length} {filteredAssets.length === 1 ? 'asset' : 'assets'} in this view
-              </p>
-            </div>
-
-            {/* View Controls */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center bg-zinc-100 p-0.5 rounded-lg">
-                <button 
-                  onClick={() => setViewMode('grid')}
-                  className={cn(
-                    "p-1 rounded-lg transition-all",
-                    viewMode === 'grid' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
+            <div className="flex items-end gap-8">
+              <div>
+                <div className="flex items-center gap-2 text-zinc-400 mb-0.5">
+                  {selectedFolderId && (
+                    <button onClick={() => setSelectedFolderId(null)} className="hover:text-zinc-900 transition-colors">
+                      <ArrowLeft size={10} />
+                    </button>
                   )}
-                >
-                  <Grid size={14} />
-                </button>
-                <button 
-                  onClick={() => setViewMode('list')}
-                  className={cn(
-                    "p-1 rounded-lg transition-all",
-                    viewMode === 'list' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
-                  )}
-                >
-                  <ListIcon size={14} />
-                </button>
-              </div>
-
-              {viewMode === 'grid' && (
-                <div className="hidden md:flex items-center gap-2">
-                  <button onClick={() => setGridSize(Math.max(1, gridSize - 1))} className="text-zinc-400 hover:text-zinc-600">
-                    <Search size={10} className="scale-90" />
-                  </button>
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="5" 
-                    step="1"
-                    value={gridSize}
-                    onChange={(e) => setGridSize(parseInt(e.target.value))}
-                    className="w-16 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
-                  />
-                  <button onClick={() => setGridSize(Math.min(5, gridSize + 1))} className="text-zinc-400 hover:text-zinc-600">
-                    <Search size={14} />
-                  </button>
-                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest w-10">
-                    {gridSize === 1 ? 'Tiny' : gridSize === 2 ? 'Small' : gridSize === 3 ? 'Medium' : gridSize === 4 ? 'Large' : 'Huge'}
-                  </span>
+                  <span className="text-[8px] font-bold uppercase tracking-widest">Library</span>
                 </div>
-              )}
+                <h2 className="text-base font-semibold tracking-tight text-zinc-900 mb-0">{selectedFolderName}</h2>
+                <p className="text-[9px] text-zinc-500 font-medium">
+                  {filteredAssets.length} {filteredAssets.length === 1 ? 'asset' : 'assets'} in this view
+                </p>
+              </div>
+
+              {/* View Controls */}
+              <div className="flex items-center gap-4 pb-1">
+                <div className="flex items-center bg-zinc-100 p-0.5 rounded-lg">
+                  <button 
+                    onClick={() => setViewMode('grid')}
+                    className={cn(
+                      "p-1 rounded-lg transition-all",
+                      viewMode === 'grid' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
+                    )}
+                  >
+                    <Grid size={14} />
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('list')}
+                    className={cn(
+                      "p-1 rounded-lg transition-all",
+                      viewMode === 'list' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
+                    )}
+                  >
+                    <ListIcon size={14} />
+                  </button>
+                </div>
+
+                {viewMode === 'grid' && (
+                  <div className="hidden md:flex items-center gap-2">
+                    <button onClick={() => setGridSize(Math.max(1, gridSize - 1))} className="text-zinc-400 hover:text-zinc-600">
+                      <Search size={10} className="scale-90" />
+                    </button>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="5" 
+                      step="1"
+                      value={gridSize}
+                      onChange={(e) => setGridSize(parseInt(e.target.value))}
+                      className="w-16 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
+                    />
+                    <button onClick={() => setGridSize(Math.min(5, gridSize + 1))} className="text-zinc-400 hover:text-zinc-600">
+                      <Search size={14} />
+                    </button>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest w-10">
+                      {gridSize === 1 ? 'Tiny' : gridSize === 2 ? 'Small' : gridSize === 3 ? 'Medium' : gridSize === 4 ? 'Large' : 'Huge'}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-1.5">
