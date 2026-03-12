@@ -239,22 +239,29 @@ const AssetCard = ({
 
   const handleDragStart = (e: React.DragEvent) => {
     dragRef.current = true;
-    const url = asset.content;
-    
-    // If it's a base64 string, it can be very large and cause freezes in dataTransfer
-    const isBase64 = url.startsWith('data:');
+    const displayUrl = getDisplayUrl(asset.content);
     
     try {
-      // NEVER set full base64 in uri-list, it's the main cause of freezes
-      if (!isBase64) { 
-        e.dataTransfer.setData('text/plain', url);
-        e.dataTransfer.setData('text/uri-list', url);
-      } else {
-        // For base64, only set the name to prevent browser freeze
-        e.dataTransfer.setData('text/plain', asset.name);
+      // Set the name as plain text
+      e.dataTransfer.setData('text/plain', asset.name);
+      
+      if (displayUrl) {
+        // Set uri-list so it can be dropped into other browser tabs or apps
+        e.dataTransfer.setData('text/uri-list', displayUrl);
+        
+        // Special header for dragging to desktop/Photoshop/etc.
+        // Format: "mimeType:fileName:url"
+        const downloadUrl = `${asset.mimeType || 'image/png'}:${asset.name}:${displayUrl}`;
+        e.dataTransfer.setData('DownloadURL', downloadUrl);
+      }
+      
+      // Set the drag image to the thumbnail for better visual feedback
+      const img = e.currentTarget.querySelector('img');
+      if (img) {
+        e.dataTransfer.setDragImage(img, 0, 0);
       }
     } catch (err) {
-      console.warn('Drag data transfer failed');
+      console.warn('Drag data transfer failed', err);
     }
     
     e.dataTransfer.effectAllowed = 'copy';
@@ -393,7 +400,7 @@ const AssetCard = ({
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="w-6 h-6 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
             {asset.type === 'image' ? (
-              <img src={getDisplayUrl(asset.content)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" draggable="false" />
+              <img src={getDisplayUrl(asset.content)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" draggable="true" />
             ) : (
               <FileIcon size={10} className="text-zinc-400" />
             )}
@@ -471,7 +478,7 @@ const AssetCard = ({
             alt={asset.name} 
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
-            draggable="false"
+            draggable="true"
           />
         ) : asset.type === 'text' ? (
           <div className="flex flex-col items-center gap-1">
@@ -1810,107 +1817,81 @@ const Dashboard = ({ user, isDemo = false, isAdmin = false, onLoginClick, onLogo
     <div className="h-screen flex flex-col bg-[#f5f5f4] text-zinc-900 font-sans overflow-hidden">
       {/* Header */}
       <header className="bg-white border-b border-zinc-200 px-6 py-2 flex-shrink-0">
-        <div className="max-w-lg mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div 
-              className="w-4 h-4 bg-zinc-900 rounded-lg flex items-center justify-center cursor-pointer"
-              onClick={onLoginClick}
-            >
-              <Upload className="text-white w-2 h-2" />
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <h1 className="text-[14px] font-bold tracking-tight cursor-pointer" onClick={onLoginClick}>AssetHub</h1>
+            
+            <div className="w-[200px] relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" size={12} />
+              <input 
+                type="text" 
+                placeholder="Search assets..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-xl text-[11px] transition-all outline-none"
+              />
             </div>
-            <h1 className="text-[12px] font-semibold tracking-tight hidden sm:block">AssetHub</h1>
+
+            <div className="flex items-center gap-1.5">
+              <motion.div
+                animate={{ x: [0, 4, 0] }}
+                transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                className="text-blue-500 hidden sm:block"
+              >
+                <ArrowRight size={12} />
+              </motion.div>
+              <button 
+                onClick={handleImportFromDrive}
+                disabled={isImporting}
+                className={cn(
+                  "flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-full text-[8px] font-bold uppercase tracking-wider transition-all hover:bg-blue-100 active:scale-95 shadow-sm",
+                  isImporting && "opacity-50 cursor-not-allowed"
+                )}
+                title="Cập nhật dữ liệu từ Drive"
+              >
+                <Cloud size={10} className={cn(isImporting && "animate-pulse")} />
+                <span>{isImporting ? "Updating..." : "Drive Synced"}</span>
+              </button>
+
+              {isAdmin && (
+                <div className="flex items-center gap-1.5">
+                  <button 
+                    onClick={handleManualSync}
+                    disabled={isSyncing}
+                    className={cn(
+                      "flex items-center justify-center p-1 rounded-lg transition-all shadow-sm",
+                      isSyncing ? "bg-zinc-100 text-zinc-400" : "bg-white text-zinc-900 hover:bg-zinc-50 border border-zinc-200"
+                    )}
+                    title="Đồng bộ lên Drive"
+                  >
+                    <Download size={12} className={cn(isSyncing && "animate-bounce")} />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.multiple = true;
+                      input.onchange = (e) => {
+                        const files = Array.from((e.target as HTMLInputElement).files || []);
+                        if (files.length > 0) handleUpload(files);
+                      };
+                      input.click();
+                    }}
+                    className="flex items-center justify-center p-1 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-all shadow-sm"
+                  >
+                    <Plus size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div className={cn(
-              "px-1.5 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-widest flex items-center gap-1",
+              "px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-widest",
               isAdmin ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"
             )}>
               {isAdmin ? "Admin" : "Public"}
-            </div>
-          </div>
-
-          <div className="flex-1 max-w-[240px] relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" size={12} />
-            <input 
-              type="text" 
-              placeholder="Search assets..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1 bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-300 rounded-xl text-[11px] transition-all outline-none"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <motion.div
-              animate={{ x: [0, 4, 0] }}
-              transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-              className="text-blue-500 hidden sm:block"
-            >
-              <ArrowRight size={12} />
-            </motion.div>
-            <button 
-              onClick={handleImportFromDrive}
-              disabled={isImporting}
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-full text-[8px] font-bold uppercase tracking-wider transition-all hover:bg-blue-100 active:scale-95 shadow-sm",
-                isImporting && "opacity-50 cursor-not-allowed"
-              )}
-              title="Cập nhật dữ liệu từ Drive"
-            >
-              <Cloud size={10} className={cn(isImporting && "animate-pulse")} />
-              <span>{isImporting ? "Updating..." : "Drive Synced"}</span>
-            </button>
-
-            {isAdmin && (
-              <button 
-                onClick={handleManualSync}
-                disabled={isSyncing}
-                className={cn(
-                  "hidden md:flex items-center justify-center p-1 rounded-lg transition-all shadow-sm",
-                  isSyncing ? "bg-zinc-100 text-zinc-400" : "bg-white text-zinc-900 hover:bg-zinc-50 border border-zinc-200"
-                )}
-                title="Đồng bộ lên Drive"
-              >
-                <Download size={12} className={cn(isSyncing && "animate-bounce")} />
-              </button>
-            )}
-            {isAdmin && (
-              <button 
-                onClick={() => {
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.multiple = true;
-                  input.onchange = (e) => {
-                    const files = Array.from((e.target as HTMLInputElement).files || []);
-                    if (files.length > 0) handleUpload(files);
-                  };
-                  input.click();
-                }}
-                className="hidden md:flex items-center justify-center p-1 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-all shadow-sm"
-              >
-                <Plus size={12} />
-              </button>
-            )}
-            {user.uid !== 'public_user' ? (
-              <button onClick={() => onLogout?.()} className="p-0.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Logout">
-                <LogOut size={12} />
-              </button>
-            ) : (
-              <button onClick={onLoginClick} className="p-0.5 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-all" title="Login">
-                <UserIcon size={12} />
-              </button>
-            )}
-            <div className="flex items-center gap-1 pl-1 border-l border-zinc-200">
-              <div className="hidden lg:block text-right">
-                <p className="text-[9px] font-bold text-zinc-900 truncate max-w-[120px]">{user.displayName || (isAdmin ? 'Admin' : 'Guest')}</p>
-                <p className="text-[7px] text-zinc-400 truncate max-w-[120px]">{isAdmin ? user.email : 'Read-only'}</p>
-              </div>
-              <img 
-                src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email || 'U'}&background=18181b&color=fff`} 
-                alt={user.displayName || 'User'} 
-                className="w-6 h-6 rounded-full border border-zinc-200 object-cover" 
-              />
             </div>
           </div>
         </div>
